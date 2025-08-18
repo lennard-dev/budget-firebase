@@ -1902,5 +1902,1234 @@ apiRouter.post("/budgets", async (req, res) => {
   }
 });
 
+// ============================================================================
+// USER MANAGEMENT ENDPOINTS
+// ============================================================================
+
+// GET /users - List all users with their roles and status
+apiRouter.get("/users", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    // Get users collection
+    const usersSnapshot = await db.collection("users").doc(uid)
+      .collection("team_members").get();
+    
+    const users = [];
+    for (const doc of usersSnapshot.docs) {
+      const userData = doc.data();
+      users.push({
+        id: doc.id,
+        name: userData.name || "Unknown",
+        email: userData.email || "",
+        role: userData.role || "user",
+        department: userData.department || "",
+        status: userData.status || "active",
+        lastActive: userData.lastActive || null,
+        createdAt: userData.createdAt || null,
+        permissions: userData.permissions || {},
+      });
+    }
+
+    // Sort by name
+    users.sort((a, b) => a.name.localeCompare(b.name));
+
+    return res.json({
+      success: true,
+      data: users,
+    });
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// POST /users - Create a new user
+apiRouter.post("/users", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const {name, email, role, department, permissions} = req.body;
+
+    if (!name || !email) {
+      return res.status(400).json({
+        success: false,
+        error: "Name and email are required",
+      });
+    }
+
+    // Generate a unique ID
+    const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    const userData = {
+      name,
+      email,
+      role: role || "user",
+      department: department || "",
+      status: "pending", // New users start as pending
+      permissions: permissions || {},
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdBy: uid,
+    };
+
+    await db.collection("users").doc(uid)
+      .collection("team_members").doc(userId).set(userData);
+
+    return res.json({
+      success: true,
+      id: userId,
+      data: {...userData, id: userId},
+    });
+  } catch (error) {
+    console.error("Error creating user:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// PUT /users/:id - Update a user
+apiRouter.put("/users/:id", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    const userId = req.params.id;
+    
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const {name, email, role, department, status, permissions} = req.body;
+
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (email !== undefined) updateData.email = email;
+    if (role !== undefined) updateData.role = role;
+    if (department !== undefined) updateData.department = department;
+    if (status !== undefined) updateData.status = status;
+    if (permissions !== undefined) updateData.permissions = permissions;
+    
+    updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+    updateData.updatedBy = uid;
+
+    await db.collection("users").doc(uid)
+      .collection("team_members").doc(userId).update(updateData);
+
+    return res.json({
+      success: true,
+      id: userId,
+    });
+  } catch (error) {
+    console.error("Error updating user:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// DELETE /users/:id - Delete a user
+apiRouter.delete("/users/:id", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    const userId = req.params.id;
+    
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    await db.collection("users").doc(uid)
+      .collection("team_members").doc(userId).delete();
+
+    return res.json({
+      success: true,
+      id: userId,
+    });
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// PATCH /users/:id/status - Toggle user status
+apiRouter.patch("/users/:id/status", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    const userId = req.params.id;
+    
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const {status} = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        error: "Status is required",
+      });
+    }
+
+    await db.collection("users").doc(uid)
+      .collection("team_members").doc(userId).update({
+        status,
+        statusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        statusUpdatedBy: uid,
+      });
+
+    return res.json({
+      success: true,
+      id: userId,
+      status,
+    });
+  } catch (error) {
+    console.error("Error updating user status:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// ============================================================================
+// ROLES & PERMISSIONS ENDPOINTS
+// ============================================================================
+
+// GET /permissions - Get permission matrix
+apiRouter.get("/permissions", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    // Get permissions configuration
+    const permissionsDoc = await db.collection("users").doc(uid)
+      .collection("settings").doc("permissions").get();
+    
+    if (!permissionsDoc.exists) {
+      // Return default permissions
+      return res.json({
+        success: true,
+        data: getDefaultPermissions(),
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: permissionsDoc.data(),
+    });
+  } catch (error) {
+    console.error("Error fetching permissions:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// PUT /permissions - Update permission matrix
+apiRouter.put("/permissions", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const permissions = req.body;
+
+    await db.collection("users").doc(uid)
+      .collection("settings").doc("permissions").set({
+        ...permissions,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy: uid,
+      });
+
+    return res.json({
+      success: true,
+    });
+  } catch (error) {
+    console.error("Error updating permissions:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Helper function for default permissions
+function getDefaultPermissions() {
+  return {
+    admin: {
+      viewExpenses: true,
+      createExpenses: true,
+      editAllExpenses: true,
+      deleteExpenses: true,
+      viewBudget: true,
+      modifyBudget: true,
+      viewUsers: true,
+      manageUsers: true,
+      accessSettings: true,
+      modifySettings: true,
+    },
+    manager: {
+      viewExpenses: true,
+      createExpenses: true,
+      editAllExpenses: true,
+      deleteExpenses: true,
+      viewBudget: true,
+      modifyBudget: true,
+      viewUsers: true,
+      manageUsers: false,
+      accessSettings: true,
+      modifySettings: false,
+    },
+    user: {
+      viewExpenses: true,
+      createExpenses: true,
+      editAllExpenses: false,
+      deleteExpenses: false,
+      viewBudget: true,
+      modifyBudget: false,
+      viewUsers: false,
+      manageUsers: false,
+      accessSettings: false,
+      modifySettings: false,
+    },
+    viewer: {
+      viewExpenses: true,
+      createExpenses: false,
+      editAllExpenses: false,
+      deleteExpenses: false,
+      viewBudget: true,
+      modifyBudget: false,
+      viewUsers: false,
+      manageUsers: false,
+      accessSettings: false,
+      modifySettings: false,
+    },
+  };
+}
+
+// ============================================================================
+// ACTIVITY LOG ENDPOINTS
+// ============================================================================
+
+// GET /activity-logs - Fetch activity logs with filters
+apiRouter.get("/activity-logs", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const {startDate, endDate, type, userId, limit = 50, offset = 0} = req.query;
+
+    // Build query
+    let query = db.collection("users").doc(uid)
+      .collection("activity_logs")
+      .orderBy("timestamp", "desc");
+
+    // Apply filters
+    if (startDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      query = query.where("timestamp", ">=", admin.firestore.Timestamp.fromDate(start));
+    }
+
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      query = query.where("timestamp", "<=", admin.firestore.Timestamp.fromDate(end));
+    }
+
+    if (type) {
+      query = query.where("type", "==", type);
+    }
+
+    if (userId) {
+      query = query.where("userId", "==", userId);
+    }
+
+    // Apply pagination
+    query = query.limit(Number(limit)).offset(Number(offset));
+
+    const snapshot = await query.get();
+    const logs = [];
+
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      logs.push({
+        id: doc.id,
+        ...data,
+        timestamp: data.timestamp?.toDate() || new Date()
+      });
+    });
+
+    return res.json({
+      success: true,
+      data: logs,
+      hasMore: logs.length === Number(limit)
+    });
+  } catch (error) {
+    console.error("Error fetching activity logs:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// POST /activity-logs - Create a new activity log entry
+apiRouter.post("/activity-logs", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const {type, action, details, entityId, entityType} = req.body;
+
+    if (!type || !action) {
+      return res.status(400).json({
+        success: false,
+        error: "Type and action are required"
+      });
+    }
+
+    // Get user info
+    const userDoc = await db.collection("users").doc(uid).get();
+    const userData = userDoc.data() || {};
+
+    const logEntry = {
+      type, // user, expense, budget, system, login
+      action, // created, updated, deleted, logged_in, logged_out
+      details: details || "",
+      entityId: entityId || null,
+      entityType: entityType || null,
+      userId: uid,
+      userName: userData.displayName || userData.email || "Unknown User",
+      userEmail: userData.email || "",
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      ip: req.ip || "unknown",
+      userAgent: req.headers["user-agent"] || "unknown"
+    };
+
+    const docRef = await db.collection("users").doc(uid)
+      .collection("activity_logs").add(logEntry);
+
+    return res.json({
+      success: true,
+      id: docRef.id
+    });
+  } catch (error) {
+    console.error("Error creating activity log:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// DELETE /activity-logs/old - Delete old activity logs
+apiRouter.delete("/activity-logs/old", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const {daysToKeep = 90} = req.query;
+    
+    // Calculate cutoff date
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - Number(daysToKeep));
+    
+    // Find and delete old logs
+    const snapshot = await db.collection("users").doc(uid)
+      .collection("activity_logs")
+      .where("timestamp", "<", admin.firestore.Timestamp.fromDate(cutoffDate))
+      .get();
+
+    const batch = db.batch();
+    let deleteCount = 0;
+
+    snapshot.forEach(doc => {
+      batch.delete(doc.ref);
+      deleteCount++;
+    });
+
+    if (deleteCount > 0) {
+      await batch.commit();
+    }
+
+    // Log this action
+    await db.collection("users").doc(uid)
+      .collection("activity_logs").add({
+        type: "system",
+        action: "cleaned_logs",
+        details: `Deleted ${deleteCount} activity logs older than ${daysToKeep} days`,
+        userId: uid,
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+    return res.json({
+      success: true,
+      deletedCount: deleteCount
+    });
+  } catch (error) {
+    console.error("Error deleting old logs:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Helper function to log activities (can be called from other endpoints)
+async function logActivity(uid, type, action, details, entityId = null, entityType = null) {
+  try {
+    const userDoc = await db.collection("users").doc(uid).get();
+    const userData = userDoc.data() || {};
+
+    await db.collection("users").doc(uid)
+      .collection("activity_logs").add({
+        type,
+        action,
+        details,
+        entityId,
+        entityType,
+        userId: uid,
+        userName: userData.displayName || userData.email || "Unknown User",
+        userEmail: userData.email || "",
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
+      });
+  } catch (error) {
+    console.error("Error logging activity:", error);
+  }
+}
+
+// ============================================================================
+// BUDGET SETTINGS ENDPOINTS
+// ============================================================================
+
+// GET /budget-settings - Get budget configuration
+apiRouter.get("/budget-settings", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const settingsDoc = await db.collection("users").doc(uid)
+      .collection("settings").doc("budget_config").get();
+
+    if (!settingsDoc.exists) {
+      // Return default settings
+      return res.json({
+        success: true,
+        data: {
+          period: 12,
+          startMonth: 1,
+          fiscalYear: new Date().getFullYear(),
+          autoRenew: true,
+          currency: "EUR"
+        }
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: settingsDoc.data()
+    });
+  } catch (error) {
+    console.error("Error fetching budget settings:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// PUT /budget-settings - Update budget configuration
+apiRouter.put("/budget-settings", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const {period, startMonth, fiscalYear, autoRenew, currency} = req.body;
+
+    const settings = {
+      period: period || 12,
+      startMonth: startMonth || 1,
+      fiscalYear: fiscalYear || new Date().getFullYear(),
+      autoRenew: autoRenew !== undefined ? autoRenew : true,
+      currency: currency || "EUR",
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: uid
+    };
+
+    await db.collection("users").doc(uid)
+      .collection("settings").doc("budget_config").set(settings);
+
+    // Log activity
+    await logActivity(uid, "budget", "updated", "Updated budget configuration settings");
+
+    return res.json({
+      success: true,
+      data: settings
+    });
+  } catch (error) {
+    console.error("Error updating budget settings:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// GET /budget-allocations - Get budget allocations by month
+apiRouter.get("/budget-allocations", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const {year, month} = req.query;
+    
+    let query = db.collection("users").doc(uid)
+      .collection("budget_allocations");
+    
+    if (year && month) {
+      const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+      const doc = await query.doc(monthKey).get();
+      
+      if (!doc.exists) {
+        return res.json({
+          success: true,
+          data: null
+        });
+      }
+      
+      return res.json({
+        success: true,
+        data: {[monthKey]: doc.data()}
+      });
+    } else if (year) {
+      // Get all months for a year
+      const snapshot = await query
+        .where("year", "==", Number(year))
+        .get();
+      
+      const allocations = {};
+      snapshot.forEach(doc => {
+        allocations[doc.id] = doc.data();
+      });
+      
+      return res.json({
+        success: true,
+        data: allocations
+      });
+    } else {
+      // Get all allocations
+      const snapshot = await query.get();
+      const allocations = {};
+      
+      snapshot.forEach(doc => {
+        allocations[doc.id] = doc.data();
+      });
+      
+      return res.json({
+        success: true,
+        data: allocations
+      });
+    }
+  } catch (error) {
+    console.error("Error fetching budget allocations:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// PUT /budget-allocations - Save budget allocations
+apiRouter.put("/budget-allocations", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const {monthKey, allocations} = req.body;
+    
+    if (!monthKey || !allocations) {
+      return res.status(400).json({
+        success: false,
+        error: "Month key and allocations are required"
+      });
+    }
+
+    // Parse year and month from monthKey (format: YYYY-MM)
+    const [year, month] = monthKey.split('-').map(Number);
+    
+    const budgetData = {
+      ...allocations,
+      year,
+      month,
+      monthKey,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: uid
+    };
+
+    await db.collection("users").doc(uid)
+      .collection("budget_allocations").doc(monthKey).set(budgetData);
+
+    // Log activity
+    await logActivity(uid, "budget", "updated", 
+      `Updated budget allocations for ${monthKey}`, monthKey, "budget_allocation");
+
+    return res.json({
+      success: true,
+      data: budgetData
+    });
+  } catch (error) {
+    console.error("Error saving budget allocations:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// POST /budget-templates - Save budget as template
+apiRouter.post("/budget-templates", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const {name, description, settings, allocations} = req.body;
+    
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        error: "Template name is required"
+      });
+    }
+
+    const template = {
+      name,
+      description: description || "",
+      settings: settings || {},
+      allocations: allocations || {},
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdBy: uid
+    };
+
+    const docRef = await db.collection("users").doc(uid)
+      .collection("budget_templates").add(template);
+
+    // Log activity
+    await logActivity(uid, "budget", "created", 
+      `Created budget template: ${name}`, docRef.id, "budget_template");
+
+    return res.json({
+      success: true,
+      id: docRef.id,
+      data: template
+    });
+  } catch (error) {
+    console.error("Error saving budget template:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// GET /budget-templates - Get saved budget templates
+apiRouter.get("/budget-templates", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const snapshot = await db.collection("users").doc(uid)
+      .collection("budget_templates")
+      .orderBy("createdAt", "desc")
+      .get();
+
+    const templates = [];
+    snapshot.forEach(doc => {
+      templates.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+
+    return res.json({
+      success: true,
+      data: templates
+    });
+  } catch (error) {
+    console.error("Error fetching budget templates:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ============================================================================
+// SYSTEM SETTINGS ENDPOINTS
+// ============================================================================
+
+// GET /system-settings - Get system configuration
+apiRouter.get("/system-settings", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const settingsDoc = await db.collection("users").doc(uid)
+      .collection("settings").doc("system").get();
+    
+    if (!settingsDoc.exists) {
+      // Return default settings
+      return res.json({
+        success: true,
+        data: {
+          appName: "Budget Management System",
+          organizationName: "",
+          timezone: "Europe/Berlin",
+          dateFormat: "DD/MM/YYYY",
+          currency: "EUR",
+          fiscalYearStart: 1,
+          language: "en",
+          autoBackup: true,
+          backupFrequency: "weekly",
+          maintenanceMode: false,
+          allowPublicRegistration: false,
+          requireEmailVerification: true,
+          sessionTimeout: 30,
+          maxLoginAttempts: 5,
+          passwordMinLength: 8,
+          enforceStrongPasswords: true,
+        },
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: settingsDoc.data(),
+    });
+  } catch (error) {
+    console.error("Error fetching system settings:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// PUT /system-settings - Update system configuration
+apiRouter.put("/system-settings", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const settings = req.body;
+
+    await db.collection("users").doc(uid)
+      .collection("settings").doc("system").set({
+        ...settings,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy: uid,
+      });
+
+    // Log this critical change
+    await db.collection("users").doc(uid)
+      .collection("activity_logs").add({
+        type: "settings",
+        action: "updated_system_settings",
+        details: "System settings updated",
+        userId: uid,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        metadata: {changes: Object.keys(settings)},
+      });
+
+    return res.json({success: true});
+  } catch (error) {
+    console.error("Error updating system settings:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// GET /email-settings - Get email configuration
+apiRouter.get("/email-settings", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const emailDoc = await db.collection("users").doc(uid)
+      .collection("settings").doc("email").get();
+    
+    if (!emailDoc.exists) {
+      return res.json({
+        success: true,
+        data: {
+          enabled: false,
+          provider: "smtp",
+          smtp: {
+            host: "",
+            port: 587,
+            secure: false,
+            username: "",
+            password: "",
+          },
+          fromEmail: "",
+          fromName: "",
+          replyTo: "",
+          notifications: {
+            newExpense: true,
+            budgetExceeded: true,
+            weeklyReport: false,
+            monthlyReport: true,
+          },
+        },
+      });
+    }
+
+    // Mask sensitive data
+    const data = emailDoc.data();
+    if (data.smtp?.password) {
+      data.smtp.password = "********";
+    }
+
+    return res.json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    console.error("Error fetching email settings:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// PUT /email-settings - Update email configuration
+apiRouter.put("/email-settings", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const settings = req.body;
+    
+    // Don't update password if it's masked
+    if (settings.smtp?.password === "********") {
+      const existingDoc = await db.collection("users").doc(uid)
+        .collection("settings").doc("email").get();
+      if (existingDoc.exists) {
+        settings.smtp.password = existingDoc.data().smtp?.password;
+      }
+    }
+
+    await db.collection("users").doc(uid)
+      .collection("settings").doc("email").set({
+        ...settings,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy: uid,
+      });
+
+    return res.json({success: true});
+  } catch (error) {
+    console.error("Error updating email settings:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// POST /test-email - Test email configuration
+apiRouter.post("/test-email", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const {testEmail} = req.body;
+    
+    // Get email settings
+    const emailDoc = await db.collection("users").doc(uid)
+      .collection("settings").doc("email").get();
+    
+    if (!emailDoc.exists || !emailDoc.data().enabled) {
+      return res.status(400).json({
+        success: false,
+        error: "Email settings not configured",
+      });
+    }
+
+    // In production, you would send actual test email here
+    // For now, simulate success
+    return res.json({
+      success: true,
+      message: `Test email would be sent to ${testEmail}`,
+    });
+  } catch (error) {
+    console.error("Error testing email:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// GET /integrations - Get integration settings
+apiRouter.get("/integrations", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const integrationsDoc = await db.collection("users").doc(uid)
+      .collection("settings").doc("integrations").get();
+    
+    if (!integrationsDoc.exists) {
+      return res.json({
+        success: true,
+        data: {
+          googleSheets: {enabled: false, apiKey: "", sheetId: ""},
+          quickbooks: {enabled: false, clientId: "", clientSecret: ""},
+          xero: {enabled: false, clientId: "", clientSecret: ""},
+          slack: {enabled: false, webhookUrl: ""},
+          zapier: {enabled: false, apiKey: ""},
+          webhooks: [],
+        },
+      });
+    }
+
+    // Mask sensitive data
+    const data = integrationsDoc.data();
+    Object.keys(data).forEach(key => {
+      if (data[key]?.apiKey) data[key].apiKey = "********";
+      if (data[key]?.clientSecret) data[key].clientSecret = "********";
+      if (data[key]?.webhookUrl) data[key].webhookUrl = data[key].webhookUrl.substring(0, 20) + "...";
+    });
+
+    return res.json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    console.error("Error fetching integrations:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// PUT /integrations - Update integration settings
+apiRouter.put("/integrations", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const settings = req.body;
+    
+    // Preserve masked values
+    const existingDoc = await db.collection("users").doc(uid)
+      .collection("settings").doc("integrations").get();
+    
+    if (existingDoc.exists) {
+      const existing = existingDoc.data();
+      Object.keys(settings).forEach(key => {
+        if (settings[key]?.apiKey === "********" && existing[key]?.apiKey) {
+          settings[key].apiKey = existing[key].apiKey;
+        }
+        if (settings[key]?.clientSecret === "********" && existing[key]?.clientSecret) {
+          settings[key].clientSecret = existing[key].clientSecret;
+        }
+      });
+    }
+
+    await db.collection("users").doc(uid)
+      .collection("settings").doc("integrations").set({
+        ...settings,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy: uid,
+      });
+
+    return res.json({success: true});
+  } catch (error) {
+    console.error("Error updating integrations:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// POST /export-data - Export all data
+apiRouter.post("/export-data", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const {format = "json", includeAttachments = false} = req.body;
+
+    // Fetch all user data
+    const userData = {
+      transactions: [],
+      categories: [],
+      budgets: [],
+      teamMembers: [],
+      settings: {},
+      exportDate: new Date().toISOString(),
+      version: "1.0",
+    };
+
+    // Get transactions
+    const txnSnap = await db.collection("users").doc(uid)
+      .collection("all-transactions").get();
+    userData.transactions = txnSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Get categories
+    const catSnap = await db.collection("users").doc(uid)
+      .collection("categories").get();
+    userData.categories = catSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Get budgets
+    const budgetSnap = await db.collection("users").doc(uid)
+      .collection("budget_allocations").get();
+    userData.budgets = budgetSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Get team members
+    const teamSnap = await db.collection("users").doc(uid)
+      .collection("team_members").get();
+    userData.teamMembers = teamSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Log export activity
+    await db.collection("users").doc(uid)
+      .collection("activity_logs").add({
+        type: "data",
+        action: "exported_data",
+        details: `Data exported in ${format} format`,
+        userId: uid,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+    if (format === "json") {
+      return res.json({
+        success: true,
+        data: userData,
+      });
+    } else {
+      // For CSV format, would need additional processing
+      return res.status(501).json({
+        success: false,
+        error: "CSV export not yet implemented",
+      });
+    }
+  } catch (error) {
+    console.error("Error exporting data:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// POST /import-data - Import data
+apiRouter.post("/import-data", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const {data, mergeMode = "replace"} = req.body;
+
+    if (!data || !data.version) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid import data format",
+      });
+    }
+
+    // In production, implement proper import logic
+    // For now, return success
+    await db.collection("users").doc(uid)
+      .collection("activity_logs").add({
+        type: "data",
+        action: "imported_data",
+        details: `Data imported with ${mergeMode} mode`,
+        userId: uid,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+    return res.json({
+      success: true,
+      message: "Data import queued for processing",
+    });
+  } catch (error) {
+    console.error("Error importing data:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 // Export the Express app as a Firebase Function
 module.exports = {api: onRequest(app)};

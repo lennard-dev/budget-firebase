@@ -1,0 +1,280 @@
+<div id="userModal" class="modal">
+  <div class="modal-content" style="max-width: 600px;">
+    <div class="modal-header">
+      <h3 class="modal-title" id="userModalTitle">Add User</h3>
+      <button class="modal-close" onclick="closeUserModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="userForm">
+        <input type="hidden" id="userId" />
+        
+        <div class="grid grid-2">
+          <div class="form-group">
+            <label class="form-label">Full Name *</label>
+            <input type="text" id="userName" class="form-control" placeholder="John Doe" required>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Email Address *</label>
+            <input type="email" id="userEmail" class="form-control" placeholder="john@example.com" required>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Role</label>
+            <select id="userRole" class="form-control">
+              <option value="viewer">Viewer</option>
+              <option value="user" selected>User</option>
+              <option value="manager">Manager</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Department</label>
+            <input type="text" id="userDepartment" class="form-control" placeholder="e.g., Operations, Finance">
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Status</label>
+            <select id="userStatus" class="form-control">
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="pending">Pending</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Phone (Optional)</label>
+            <input type="tel" id="userPhone" class="form-control" placeholder="+30 123 456 7890">
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label">Notes (Optional)</label>
+          <textarea id="userNotes" class="form-control" rows="3" placeholder="Additional information about this user"></textarea>
+        </div>
+        
+        <!-- Role Description -->
+        <div class="role-info-box">
+          <h4>Role Permissions</h4>
+          <div id="roleDescription" class="role-description">
+            <!-- Will be populated based on selected role -->
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeUserModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUser()">Save User</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.role-info-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 16px;
+}
+
+.role-info-box h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #374151;
+}
+
+.role-description {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.role-description ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.role-description li {
+  margin: 2px 0;
+}
+</style>
+
+<script>
+(function() {
+  let currentUserId = null;
+  
+  // Role descriptions
+  const roleDescriptions = {
+    admin: {
+      title: "Administrator",
+      permissions: [
+        "Full system access",
+        "Manage all users and roles",
+        "Modify all expenses and budgets",
+        "Access all settings and configurations",
+        "View all reports and analytics"
+      ]
+    },
+    manager: {
+      title: "Manager",
+      permissions: [
+        "View and edit all expenses",
+        "Manage budgets",
+        "View user directory",
+        "Access most settings",
+        "Generate reports"
+      ]
+    },
+    user: {
+      title: "Regular User",
+      permissions: [
+        "Create and view expenses",
+        "Edit own expenses",
+        "View budgets",
+        "Limited settings access"
+      ]
+    },
+    viewer: {
+      title: "Viewer",
+      permissions: [
+        "View expenses only",
+        "View budgets",
+        "No editing permissions",
+        "Read-only access"
+      ]
+    }
+  };
+  
+  // Open modal function
+  window.openUserModal = function(user) {
+    const modal = document.getElementById('userModal');
+    const title = document.getElementById('userModalTitle');
+    
+    if (user) {
+      // Edit mode
+      currentUserId = user.id;
+      title.textContent = 'Edit User';
+      document.getElementById('userId').value = user.id;
+      document.getElementById('userName').value = user.name || '';
+      document.getElementById('userEmail').value = user.email || '';
+      document.getElementById('userRole').value = user.role || 'user';
+      document.getElementById('userDepartment').value = user.department || '';
+      document.getElementById('userStatus').value = user.status || 'active';
+      document.getElementById('userPhone').value = user.phone || '';
+      document.getElementById('userNotes').value = user.notes || '';
+    } else {
+      // Add mode
+      currentUserId = null;
+      title.textContent = 'Add New User';
+      document.getElementById('userForm').reset();
+      document.getElementById('userRole').value = 'user';
+      document.getElementById('userStatus').value = 'pending';
+    }
+    
+    // Update role description
+    updateRoleDescription();
+    
+    modal.style.display = 'block';
+  };
+  
+  // Close modal function
+  window.closeUserModal = function() {
+    document.getElementById('userModal').style.display = 'none';
+    document.getElementById('userForm').reset();
+    currentUserId = null;
+  };
+  
+  // Update role description when role changes
+  function updateRoleDescription() {
+    const role = document.getElementById('userRole').value;
+    const descBox = document.getElementById('roleDescription');
+    const desc = roleDescriptions[role];
+    
+    if (desc) {
+      descBox.innerHTML = `
+        <strong>${desc.title} Role:</strong>
+        <ul>
+          ${desc.permissions.map(p => `<li>${p}</li>`).join('')}
+        </ul>
+      `;
+    }
+  }
+  
+  // Save user function
+  window.saveUser = async function() {
+    const name = document.getElementById('userName').value.trim();
+    const email = document.getElementById('userEmail').value.trim();
+    const role = document.getElementById('userRole').value;
+    const department = document.getElementById('userDepartment').value.trim();
+    const status = document.getElementById('userStatus').value;
+    const phone = document.getElementById('userPhone').value.trim();
+    const notes = document.getElementById('userNotes').value.trim();
+    
+    if (!name || !email) {
+      alert('Please enter both name and email');
+      return;
+    }
+    
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      alert('Please enter a valid email address');
+      return;
+    }
+    
+    try {
+      const userData = {
+        name,
+        email,
+        role,
+        department,
+        status,
+        phone,
+        notes
+      };
+      
+      let response;
+      if (currentUserId) {
+        // Update existing user
+        response = await window.callApi(`/users/${currentUserId}`, {
+          method: 'PUT',
+          body: JSON.stringify(userData)
+        });
+      } else {
+        // Create new user
+        response = await window.callApi('/users', {
+          method: 'POST',
+          body: JSON.stringify(userData)
+        });
+      }
+      
+      if (response.success) {
+        closeUserModal();
+        // Reload users list
+        if (window.loadUsers) {
+          window.loadUsers();
+        }
+        alert(currentUserId ? 'User updated successfully' : 'User added successfully');
+      } else {
+        alert('Error: ' + (response.error || 'Failed to save user'));
+      }
+    } catch (error) {
+      console.error('Error saving user:', error);
+      alert('Failed to save user. Please try again.');
+    }
+  };
+  
+  // Set up event listener for role change
+  document.getElementById('userRole').addEventListener('change', updateRoleDescription);
+  
+  // Close modal when clicking outside
+  window.addEventListener('click', function(event) {
+    const modal = document.getElementById('userModal');
+    if (event.target === modal) {
+      closeUserModal();
+    }
+  });
+})();
+</script>
