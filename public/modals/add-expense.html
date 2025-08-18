@@ -1000,8 +1000,11 @@
       delete modal.dataset.editingId;
       window.closeModal('add-expense-modal');
       
-      // Refresh the expenses page if we're on it
-      if (location.hash.replace('#','') === 'expenses') {
+      // Refresh the current page data
+      const currentPage = location.hash.replace('#','');
+      
+      if (currentPage === 'expenses') {
+        // Refresh the expenses page
         if (typeof window.initializeExpensesPage === 'function') {
           try { 
             await window.initializeExpensesPage(); 
@@ -1016,6 +1019,16 @@
             console.log('Expenses list reloaded');
           } catch(e) {
             console.error('Failed to reload expenses:', e);
+          }
+        }
+      } else if (currentPage === 'cash-banking') {
+        // Refresh the cash-banking page
+        if (typeof window.initializeCashBankingPage === 'function') {
+          try {
+            await window.initializeCashBankingPage();
+            console.log('Cash-banking page refreshed');
+          } catch(e) {
+            console.error('Failed to refresh cash-banking page:', e);
           }
         }
       }

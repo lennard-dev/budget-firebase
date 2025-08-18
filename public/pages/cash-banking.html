@@ -106,7 +106,15 @@
     <!-- Main Content Card -->
     <div class="card" style="position: relative;">
       <div class="card-body" style="padding: 0;">
-        <div style="padding-bottom: 42px;">
+        <!-- Top Bar -->
+        <div class="top-bar" id="cb-top-bar">
+          <div class="top-bar-content">
+            <div class="top-bar-left"></div>
+            <div class="top-bar-center"></div>
+            <div class="top-bar-right"></div>
+          </div>
+        </div>
+        <div style="padding-top: 42px; padding-bottom: 36px;">
           <table class="data-table" style="margin: 0;">
             <thead>
               <tr>
@@ -115,7 +123,7 @@
                 <th class="col-description">DESCRIPTION</th>
                 <th class="col-amount text-right">AMOUNT</th>
                 <th class="col-balance text-right">REM. BALANCE</th>
-                <th class="col-actions text-center">ACTIONS</th>
+                <th class="col-actions" style="text-align: center;">ACTIONS</th>
               </tr>
             </thead>
             <tbody id="cb-tbody">
@@ -125,17 +133,19 @@
         </div>
       </div>
       <div class="bottom-bar" id="cb-bottom-bar">
-        <div class="bottom-bar-left">
-          <span id="cb-opening-balance" style="display:none; font-size: 13px;">
-            <span class="text-muted">Opening Balance:&nbsp;&nbsp;</span>
-            <strong id="cb-opening-amount" style="font-weight: 600;">€0.00</strong>
-          </span>
-        </div>
-        <div class="bottom-bar-center" id="cb-loadmore-wrap" style="display:none;">
-          <button class="btn btn-secondary btn-sm" id="cb-more">Load More</button>
-        </div>
-        <div class="bottom-bar-right">
-          <span id="cb-items-info" class="text-muted" style="font-size: 13px;"></span>
+        <div class="bottom-bar-content">
+          <div class="bottom-bar-left">
+            <span id="cb-opening-balance" style="display:none; font-size: 13px;">
+              <span class="text-muted">Opening Balance:&nbsp;&nbsp;</span>
+              <strong id="cb-opening-amount" style="font-weight: 600;">€0.00</strong>
+            </span>
+          </div>
+          <div class="bottom-bar-center" id="cb-loadmore-wrap" style="display:none;">
+            <button class="btn btn-secondary btn-sm" id="cb-more">Load More</button>
+          </div>
+          <div class="bottom-bar-right">
+            <span id="cb-items-info" class="text-muted" style="font-size: 13px;"></span>
+          </div>
         </div>
       </div>
     </div>
@@ -218,7 +228,15 @@
     <!-- Main Content Card -->
     <div class="card" style="position: relative;">
       <div class="card-body" style="padding: 0;">
-        <div style="padding-bottom: 42px;">
+        <!-- Top Bar -->
+        <div class="top-bar" id="bank-top-bar">
+          <div class="top-bar-content">
+            <div class="top-bar-left"></div>
+            <div class="top-bar-center"></div>
+            <div class="top-bar-right"></div>
+          </div>
+        </div>
+        <div style="padding-top: 42px; padding-bottom: 36px;">
           <table class="data-table" style="margin: 0;">
             <thead>
               <tr>
@@ -227,7 +245,7 @@
                 <th class="col-description">DESCRIPTION</th>
                 <th class="col-amount text-right">AMOUNT</th>
                 <th class="col-balance text-right">REM. BALANCE</th>
-                <th class="col-actions text-center">ACTIONS</th>
+                <th class="col-actions" style="text-align: center;">ACTIONS</th>
               </tr>
             </thead>
             <tbody id="bank-tbody">
@@ -237,17 +255,19 @@
         </div>
       </div>
       <div class="bottom-bar" id="bank-bottom-bar">
-        <div class="bottom-bar-left">
-          <span id="bank-opening-balance" style="display:none; font-size: 13px;">
-            <span class="text-muted">Opening Balance:&nbsp;&nbsp;</span>
-            <strong id="bank-opening-amount" style="font-weight: 600;">€0.00</strong>
-          </span>
-        </div>
-        <div class="bottom-bar-center" id="bank-loadmore-wrap" style="display:none;">
-          <button class="btn btn-secondary btn-sm" id="bank-more">Load More</button>
-        </div>
-        <div class="bottom-bar-right">
-          <span id="bank-items-info" class="text-muted" style="font-size: 13px;"></span>
+        <div class="bottom-bar-content">
+          <div class="bottom-bar-left">
+            <span id="bank-opening-balance" style="display:none; font-size: 13px;">
+              <span class="text-muted">Opening Balance:&nbsp;&nbsp;</span>
+              <strong id="bank-opening-amount" style="font-weight: 600;">€0.00</strong>
+            </span>
+          </div>
+          <div class="bottom-bar-center" id="bank-loadmore-wrap" style="display:none;">
+            <button class="btn btn-secondary btn-sm" id="bank-more">Load More</button>
+          </div>
+          <div class="bottom-bar-right">
+            <span id="bank-items-info" class="text-muted" style="font-size: 13px;"></span>
+          </div>
         </div>
       </div>
     </div>
@@ -256,53 +276,62 @@
 
 <!-- Unified Record Movement Modal -->
 <div id="movement-modal" class="modal" style="display:none;">
-  <div class="modal-content">
+  <div class="modal-content modal-movement">
     <div class="modal-header">
       <h3>Record Movement</h3>
       <button class="close-modal" onclick="closeMovementModal()">&times;</button>
     </div>
     <div class="modal-body">
+      <div class="movement-description">
+        Record cash and bank movements including donations received, withdrawals, and deposits between accounts.
+      </div>
+      
       <div class="form-group">
         <label>Account</label>
-        <select id="movement-account" class="form-control" onchange="updateMovementForm(false)">
-          <option value="cash">Cash</option>
-          <option value="bank">Bank</option>
-        </select>
+        <div class="account-selector">
+          <button type="button" class="account-option" data-account="cash" onclick="selectAccount('cash')">
+            <svg class="account-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+              <path d="M16 7V5a2 2 0 0 0-2-2H10a2 2 0 0 0-2 2v2"></path>
+              <circle cx="12" cy="14" r="2"></circle>
+            </svg>
+            <span>Cash</span>
+          </button>
+          <button type="button" class="account-option" data-account="bank" onclick="selectAccount('bank')">
+            <svg class="account-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="3" y1="9" x2="21" y2="9"></line>
+              <line x1="9" y1="21" x2="9" y2="9"></line>
+            </svg>
+            <span>Bank</span>
+          </button>
+        </div>
+        <input type="hidden" id="movement-account" value="cash" />
       </div>
-      <div class="form-group">
-        <label>Type</label>
-        <select id="movement-type" class="form-control" onchange="updateMovementForm(true)">
-          <option value="expense">Expense</option>
-          <option value="income">Income / Donation</option>
-          <option value="withdrawal">Bank Withdrawal (to Cash)</option>
-          <option value="deposit">Cash Deposit (to Bank)</option>
-        </select>
+      
+      <div class="form-row">
+        <div class="form-group" style="flex: 1.5;">
+          <label>Type</label>
+          <select id="movement-type" class="form-control" onchange="updateMovementForm(true)">
+            <option value="income">Income / Donation</option>
+            <option value="withdrawal">Bank Withdrawal (to Cash)</option>
+            <option value="deposit">Cash Deposit (to Bank)</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex: 1;">
+          <label>Date</label>
+          <input type="date" id="movement-date" class="form-control" />
+        </div>
       </div>
-      <div class="form-group">
-        <label>Date</label>
-        <input type="date" id="movement-date" class="form-control" />
-      </div>
+      
       <div class="form-group">
         <label>Amount (€)</label>
         <input type="number" id="movement-amount" class="form-control" step="0.01" min="0" />
       </div>
+      
       <div class="form-group">
         <label>Description</label>
-        <input type="text" id="movement-description" class="form-control" />
-      </div>
-      <div class="form-group" id="movement-category-group">
-        <label>Category</label>
-        <select id="movement-category" class="form-control">
-          <option value="">Select category...</option>
-        </select>
-      </div>
-      <div class="form-group" id="movement-payment-group" style="display:none;">
-        <label>Payment Method</label>
-        <select id="movement-payment" class="form-control">
-          <option value="Cash">Cash</option>
-          <option value="Bank Transfer">Bank Transfer</option>
-          <option value="Card">Card</option>
-        </select>
+        <input type="text" id="movement-description" class="form-control" placeholder="Enter description..." />
       </div>
     </div>
     <div class="modal-footer">
@@ -533,14 +562,20 @@
             <strong>${fmt(entry.display_balance || entry.balance_after)}</strong>
           </td>
           <td class="col-actions text-center">
-            ${isExpense ? `
-              <button class="btn btn-sm btn-ghost" onclick="viewReceipt('${entry.transaction_id}')" title="View Receipt">
-                👁️
-              </button>
-            ` : ''}
-            <button class="btn btn-sm btn-ghost" onclick="openActionMenu('${entry.transaction_id}')" title="Actions">
-              ⚙️
-            </button>
+            <div class="actions-cell">
+              ${isExpense ? `
+                <button class="action-btn view-receipt" onclick="viewReceipt('${entry.transaction_id}')" title="View receipt"></button>
+              ` : `
+                <div class="action-btn-placeholder"></div>
+              `}
+              <div class="action-dropdown">
+                <button class="action-btn gear-btn" onclick="window.toggleActionMenu(this); return false;" title="More actions"></button>
+                <div class="action-menu">
+                  <button onclick="editMovement('${entry.transaction_id}')">Edit</button>
+                  <button class="delete-action" onclick="deleteMovement('${entry.transaction_id}')">Delete</button>
+                </div>
+              </div>
+            </div>
           </td>
         </tr>
       `;
@@ -670,14 +705,20 @@
             <strong>${fmt(entry.display_balance || entry.balance_after)}</strong>
           </td>
           <td class="col-actions text-center">
-            ${isExpense ? `
-              <button class="btn btn-sm btn-ghost" onclick="viewReceipt('${entry.transaction_id}')" title="View Receipt">
-                👁️
-              </button>
-            ` : ''}
-            <button class="btn btn-sm btn-ghost" onclick="openActionMenu('${entry.transaction_id}')" title="Actions">
-              ⚙️
-            </button>
+            <div class="actions-cell">
+              ${isExpense ? `
+                <button class="action-btn view-receipt" onclick="viewReceipt('${entry.transaction_id}')" title="View receipt"></button>
+              ` : `
+                <div class="action-btn-placeholder"></div>
+              `}
+              <div class="action-dropdown">
+                <button class="action-btn gear-btn" onclick="window.toggleActionMenu(this); return false;" title="More actions"></button>
+                <div class="action-menu">
+                  <button onclick="editMovement('${entry.transaction_id}')">Edit</button>
+                  <button class="delete-action" onclick="deleteMovement('${entry.transaction_id}')">Delete</button>
+                </div>
+              </div>
+            </div>
           </td>
         </tr>
       `;
@@ -764,21 +805,39 @@
     document.getElementById('movement-date').value = new Date().toISOString().split('T')[0];
     document.getElementById('movement-amount').value = '';
     document.getElementById('movement-description').value = '';
-    document.getElementById('movement-category').value = '';
     document.getElementById('movement-account').value = 'cash';
+    // Set cash as default selected
+    selectAccount('cash');
     // Don't pre-set to expense, let updateMovementForm set the first available option
     updateMovementForm(false);
   }
   
+  function selectAccount(account) {
+    // Update hidden input
+    document.getElementById('movement-account').value = account;
+    
+    // Update button states
+    document.querySelectorAll('.account-option').forEach(btn => {
+      if (btn.dataset.account === account) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+    
+    // Update form based on new account
+    updateMovementForm(false);
+  }
+  
   function closeMovementModal() {
-    document.getElementById('movement-modal').style.display = 'none';
+    const modal = document.getElementById('movement-modal');
+    modal.style.display = 'none';
+    delete modal.dataset.editId; // Clear any edit ID
   }
   
   function updateMovementForm(preserveType = true) {
     const account = document.getElementById('movement-account').value;
     const typeSelect = document.getElementById('movement-type');
-    const categoryGroup = document.getElementById('movement-category-group');
-    const paymentGroup = document.getElementById('movement-payment-group');
     
     // Store current selected value before updating options
     const currentType = typeSelect.value;
@@ -790,16 +849,12 @@
         <option value="withdrawal">ATM Withdrawal (from Bank)</option>
         <option value="deposit">Cash Deposit (to Bank)</option>
       `;
-      paymentGroup.style.display = 'none';
-      document.getElementById('movement-payment').value = 'Cash';
     } else {
       typeSelect.innerHTML = `
         <option value="income">Bank Donation</option>
         <option value="withdrawal">Cash Withdrawal (to Cash)</option>
         <option value="deposit">Cash Deposit (from Cash)</option>
       `;
-      // Payment method is not needed for any bank movements now (no expenses)
-      paymentGroup.style.display = 'none';
     }
     
     // Restore the selected value if it exists in the new options and preserveType is true
@@ -809,27 +864,18 @@
         typeSelect.value = currentType;
       }
     }
-    
-    // Get the current type value (after potential restoration)
-    const type = typeSelect.value;
-    
-    // Show/hide category based on type - only show for donations (income)
-    if (type === 'income') {
-      categoryGroup.style.display = 'block';
-    } else {
-      categoryGroup.style.display = 'none';
-    }
   }
   
   // Save movement
   async function saveMovement() {
     try {
+      const modal = document.getElementById('movement-modal');
+      const editId = modal.dataset.editId;
       const account = document.getElementById('movement-account').value;
       const type = document.getElementById('movement-type').value;
       const date = document.getElementById('movement-date').value;
       const amount = parseFloat(document.getElementById('movement-amount').value);
       const description = document.getElementById('movement-description').value;
-      const category = document.getElementById('movement-category').value;
       
       if (!date || !amount || !description) {
         alert('Please fill in all required fields');
@@ -853,7 +899,6 @@
           date,
           amount,
           description,
-          category,
           account: account
         };
       } else if (type === 'withdrawal') {
@@ -874,20 +919,31 @@
         };
       }
       
-      await window.TransactionService.create(transactionType, transactionData);
+      if (editId) {
+        // Update existing transaction
+        await window.TransactionService.update(editId, transactionType, transactionData);
+        delete modal.dataset.editId; // Clear edit ID
+        console.log('Transaction updated successfully');
+      } else {
+        // Create new transaction
+        await window.TransactionService.create(transactionType, transactionData);
+        console.log('Transaction created successfully');
+      }
       
       closeMovementModal();
+      
+      // Reload all data to reflect changes
       await loadSummary();
       
-      // Reload appropriate tab
+      // Reload the appropriate tab based on what's currently active
       const currentTab = document.querySelector('.tab-nav-button.active').dataset.tab;
       if (currentTab === 'movements') {
         await loadCashMovements();
       } else if (currentTab === 'bank') {
         await loadBankMovements();
+      } else if (currentTab === 'expected') {
+        await loadExpectedIncome();
       }
-      
-      console.log('Transaction saved successfully');
       
     } catch (error) {
       console.error('Failed to save transaction:', error);
@@ -896,14 +952,136 @@
   }
   
   // Action menu functions
+  window.toggleActionMenu = function(button) {
+    // Close any other open menus
+    document.querySelectorAll('.action-menu.show').forEach(menu => {
+      if (menu !== button.nextElementSibling) {
+        menu.classList.remove('show');
+        menu.closest('.action-dropdown').classList.remove('active');
+      }
+    });
+    
+    // Toggle this menu
+    const menu = button.nextElementSibling;
+    const dropdown = button.closest('.action-dropdown');
+    menu.classList.toggle('show');
+    dropdown.classList.toggle('active');
+    
+    // Close menu when clicking outside
+    if (menu.classList.contains('show')) {
+      setTimeout(() => {
+        document.addEventListener('click', function closeMenu(e) {
+          if (!dropdown.contains(e.target)) {
+            menu.classList.remove('show');
+            dropdown.classList.remove('active');
+            document.removeEventListener('click', closeMenu);
+          }
+        });
+      }, 0);
+    }
+  };
+  
   function viewReceipt(transactionId) {
     console.log('View receipt for:', transactionId);
     // To be implemented: open receipt viewer
+    alert('Receipt viewing will be implemented with Firebase Storage integration.');
   }
   
-  function openActionMenu(transactionId) {
-    console.log('Open action menu for:', transactionId);
-    // To be implemented: show edit/delete menu
+  async function editMovement(transactionId) {
+    // Close any open menus
+    document.querySelectorAll('.action-menu.show').forEach(menu => {
+      menu.classList.remove('show');
+      menu.closest('.action-dropdown').classList.remove('active');
+    });
+    
+    try {
+      // Fetch the transaction details
+      const transaction = await window.TransactionService.getById(transactionId);
+      if (!transaction) {
+        alert('Transaction not found');
+        return;
+      }
+      
+      // If it's an expense, open the expense modal instead
+      if (transaction.type === 'expense') {
+        // Check if the expense modal function exists
+        if (window.openExpenseModal) {
+          window.openExpenseModal(transactionId);
+        } else {
+          console.error('openExpenseModal not found');
+          alert('Expense editing is not available. Please go to the Expenses page to edit this transaction.');
+        }
+        return;
+      }
+      
+      // For non-expense transactions, open the movement modal
+      document.getElementById('movement-modal').style.display = 'flex';
+      document.getElementById('movement-modal').dataset.editId = transactionId;
+      
+      // Set the date
+      document.getElementById('movement-date').value = transaction.date;
+      
+      // Set the amount (always positive for display)
+      document.getElementById('movement-amount').value = Math.abs(transaction.amount);
+      
+      // Set the description
+      document.getElementById('movement-description').value = transaction.description || '';
+      
+      // Determine account and type based on transaction data
+      if (transaction.type === 'income') {
+        // It's income/donation
+        const accountValue = transaction.account || 'cash';
+        document.getElementById('movement-account').value = accountValue;
+        selectAccount(accountValue);
+        document.getElementById('movement-type').value = 'income';
+      } else if (transaction.type === 'transfer') {
+        // It's a transfer (withdrawal or deposit)
+        if (transaction.subtype === 'withdrawal') {
+          document.getElementById('movement-account').value = 'bank';
+          selectAccount('bank');
+          document.getElementById('movement-type').value = 'withdrawal';
+        } else if (transaction.subtype === 'deposit') {
+          document.getElementById('movement-account').value = 'cash';
+          selectAccount('cash');
+          document.getElementById('movement-type').value = 'deposit';
+        }
+      }
+      
+      // Update the form based on selected values
+      updateMovementForm(true);
+      
+    } catch (error) {
+      console.error('Error loading transaction for edit:', error);
+      alert('Failed to load transaction details');
+    }
+  }
+  
+  async function deleteMovement(transactionId) {
+    // Close any open menus
+    document.querySelectorAll('.action-menu.show').forEach(menu => {
+      menu.classList.remove('show');
+      menu.closest('.action-dropdown').classList.remove('active');
+    });
+    
+    if (confirm('Are you sure you want to delete this transaction? This action cannot be undone.')) {
+      try {
+        await window.TransactionService.delete(transactionId);
+        
+        // Reload the data
+        await loadSummary();
+        const currentTab = document.querySelector('.tab-nav-button.active').dataset.tab;
+        if (currentTab === 'movements') {
+          await loadCashMovements();
+        } else if (currentTab === 'bank') {
+          await loadBankMovements();
+        }
+        
+        console.log('Transaction deleted successfully');
+      } catch (error) {
+        console.error('Failed to delete transaction:', error);
+        alert('Failed to delete transaction: ' + error.message);
+      }
+    }
   }
   
   // Placeholder functions for actions
@@ -1064,8 +1242,10 @@
   window.updateMovementForm = updateMovementForm;
   window.saveMovement = saveMovement;
   window.viewReceipt = viewReceipt;
-  window.openActionMenu = openActionMenu;
+  window.editMovement = editMovement;
+  window.deleteMovement = deleteMovement;
   window.exportExpectedIncome = exportExpectedIncome;
+  window.selectAccount = selectAccount;
 })(); // End IIFE
 </script>
 
@@ -1162,18 +1342,142 @@
 .badge-warning { background: #fed7aa; color: #92400e; }
 .badge-secondary { background: #f3f4f6; color: #4b5563; }
 
-.btn-ghost {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  font-size: 16px;
-  opacity: 0.7;
-  transition: opacity 0.2s;
+/* Action buttons styling - matching expenses page */
+.actions-cell {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  align-items: center;
 }
 
-.btn-ghost:hover {
+.action-btn-placeholder {
+  width: 32px;
+  height: 32px;
+  display: inline-block;
+}
+
+.action-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #6b7280;
+  transition: all 0.15s ease;
+}
+
+.action-btn:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+/* Professional SVG icons */
+.action-btn.view-receipt::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  pointer-events: none;
+}
+
+.action-btn.gear-btn::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  pointer-events: none;
+}
+
+.action-btn.view-receipt:hover::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
+}
+
+.action-btn.gear-btn:hover::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z'/%3E%3C/svg%3E");
+}
+
+/* Dropdown menu for gear wheel */
+.action-dropdown {
+  position: relative;
+  display: inline-block;
+  z-index: 1000;
+}
+
+.action-dropdown.active {
+  z-index: 10000;
+}
+
+.action-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 4px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  min-width: 120px;
+  z-index: 10001;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: all 0.15s ease;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.action-menu.show {
   opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.action-menu button {
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+  color: #374151;
+  transition: background 0.15s ease;
+  display: block;
+  white-space: nowrap;
+}
+
+.action-menu button:hover {
+  background: #f3f4f6;
+}
+
+.action-menu button:first-child {
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+
+.action-menu button:last-child {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+.action-menu button.delete-action {
+  color: #374151;
+}
+
+.action-menu button.delete-action:hover {
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 /* Filter styles - clean white background */
@@ -1203,5 +1507,156 @@
 
 .filter-item .form-control {
   width: 100%;
+}
+
+/* Movement Modal Styles */
+.modal-movement {
+  max-width: 500px;
+}
+
+.movement-description {
+  background: #f8fafc;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.account-selector {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.account-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #ffffff;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.account-option:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.account-option.active {
+  background: #f0f4ff;
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.account-option.active .account-icon {
+  color: var(--color-primary);
+}
+
+.account-icon {
+  width: 20px;
+  height: 20px;
+  color: #64748b;
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.modal-movement .form-control {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.modal-movement .modal-body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Top bar styles */
+.top-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 42px; /* Slightly taller than bottom bar for future buttons */
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  z-index: 10;
+}
+
+.top-bar-content {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.top-bar-left {
+  flex: 0 0 auto;
+}
+
+.top-bar-center {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+}
+
+.top-bar-right {
+  flex: 0 0 auto;
+}
+
+/* Bottom bar styles */
+.bottom-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 36px; /* Reduced height from 42px */
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+}
+
+.bottom-bar-content {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bottom-bar-left {
+  flex: 0 0 auto;
+}
+
+.bottom-bar-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.bottom-bar-right {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* Adjust table container padding for new bottom bar height */
+.card-body > div[style*="padding-bottom: 42px"] {
+  padding-bottom: 36px !important;
 }
 </style>

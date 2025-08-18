@@ -149,14 +149,78 @@ window.TransactionService = {
   },
 
   /**
+   * Get a single transaction by ID
+   * @param {string} id - Transaction ID
+   */
+  async getById(id) {
+    const response = await window.callApi(`/transactions/${id}`, {
+      method: 'GET'
+    });
+
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to fetch transaction');
+    }
+
+    return response.data;
+  },
+
+  /**
    * Update an existing transaction
    * @param {string} id - Transaction ID
-   * @param {Object} updates - Fields to update
+   * @param {string} type - Transaction type (for proper data formatting)
+   * @param {Object} data - Transaction data (same format as create)
    */
-  async update(id, updates) {
+  async update(id, type, data) {
+    // Prepare transaction same as create
+    const transaction = {
+      date: data.date || new Date().toISOString().split('T')[0],
+      type: type,
+      description: data.description || '',
+      category: data.category || null,
+      subcategory: data.subcategory || null,
+      metadata: {}
+    };
+
+    // Handle different transaction types (same logic as create)
+    switch(type) {
+      case 'expense':
+        transaction.account = data.paymentMethod === 'Cash' ? 'cash' : 'bank';
+        transaction.amount = Math.abs(Number(data.amount));
+        transaction.paymentMethod = data.paymentMethod;
+        transaction.metadata = {
+          ...transaction.metadata,
+          paymentMethod: data.paymentMethod,
+          vendor: data.vendor || null,
+          receiptId: data.receiptId || null
+        };
+        break;
+        
+      case 'income':
+        transaction.account = data.account || 'bank';
+        transaction.amount = Math.abs(Number(data.amount));
+        transaction.metadata = {
+          ...transaction.metadata,
+          source: data.source || data.donor || null,
+          reference: data.reference || null
+        };
+        break;
+        
+      case 'transfer':
+        transaction.subtype = data.subtype;
+        transaction.amount = Math.abs(Number(data.amount));
+        break;
+        
+      default:
+        throw new Error(`Unknown transaction type: ${type}`);
+    }
+
+    // Add any additional metadata
+    if (data.notes) transaction.metadata.notes = data.notes;
+    if (data.tags) transaction.metadata.tags = data.tags;
+
     const response = await window.callApi(`/transactions/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(updates)
+      method: 'PUT',
+      body: JSON.stringify(transaction)
     });
 
     if (!response.success) {

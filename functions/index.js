@@ -1193,8 +1193,9 @@ apiRouter.put("/categories/:id/rename", async (req, res) => {
       updated_at: admin.firestore.FieldValue.serverTimestamp()
     });
     
-    // If name changed, update all transactions with this category
+    // If name changed, update all transactions and budgets with this category
     if (oldName !== newName) {
+      // Update transactions
       const transactionsSnap = await db.collection("users").doc(uid)
           .collection("all-transactions")
           .where("category", "==", oldName)
@@ -1211,6 +1212,32 @@ apiRouter.put("/categories/:id/rename", async (req, res) => {
       if (updateCount > 0) {
         await batch.commit();
         console.log(`Updated ${updateCount} transactions with new category name`);
+      }
+      
+      // Update budgets - migrate category name in all budget documents
+      const budgetsSnap = await db.collection("users").doc(uid)
+          .collection("budgets")
+          .get();
+      
+      const budgetBatch = db.batch();
+      let budgetUpdateCount = 0;
+      
+      for (const budgetDoc of budgetsSnap.docs) {
+        const budgetData = budgetDoc.data();
+        if (budgetData.categories && budgetData.categories[oldName]) {
+          // Create new categories object with renamed key
+          const newCategories = {...budgetData.categories};
+          newCategories[newName] = newCategories[oldName];
+          delete newCategories[oldName];
+          
+          budgetBatch.update(budgetDoc.ref, { categories: newCategories });
+          budgetUpdateCount++;
+        }
+      }
+      
+      if (budgetUpdateCount > 0) {
+        await budgetBatch.commit();
+        console.log(`Updated ${budgetUpdateCount} budget documents with new category name`);
       }
     }
     
@@ -1332,6 +1359,187 @@ apiRouter.post("/donors", async (req, res) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     return res.json({success: true, id: ref.id});
+  }
+});
+
+// ==================== BUDGET ENDPOINTS ====================
+
+// Get budget for a specific month
+apiRouter.get("/budgets", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const {year, month} = req.query;
+    
+    if (!year || !month) {
+      return res.status(400).json({
+        success: false,
+        error: "Year and month are required",
+      });
+    }
+    
+    // Get budget document for the specific month
+    const budgetId = `${year}-${String(month).padStart(2, '0')}`;
+    const budgetDoc = await db.collection("users").doc(uid)
+        .collection("budgets").doc(budgetId).get();
+    
+    // Get actual spending for this month from transactions
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+    
+    const transactionsSnap = await db.collection("users").doc(uid)
+        .collection("all-transactions")
+        .where("type", "==", "expense")
+        .where("date", ">=", startDate)
+        .where("date", "<=", endDate)
+        .get();
+    
+    // Calculate spending by category
+    const spendingByCategory = {};
+    transactionsSnap.forEach(doc => {
+      const txn = doc.data();
+      const category = txn.category || "Other";
+      const subcategory = txn.subcategory || "General";
+      
+      if (!spendingByCategory[category]) {
+        spendingByCategory[category] = {
+          total: 0,
+          subcategories: {},
+        };
+      }
+      
+      spendingByCategory[category].total += Math.abs(txn.amount || 0);
+      
+      if (!spendingByCategory[category].subcategories[subcategory]) {
+        spendingByCategory[category].subcategories[subcategory] = 0;
+      }
+      spendingByCategory[category].subcategories[subcategory] += Math.abs(txn.amount || 0);
+    });
+    
+    // Combine budget and spending data
+    const budgetData = budgetDoc.exists ? budgetDoc.data() : {};
+    const categoriesGrouped = {};
+    let totalBudget = 0;
+    let totalSpent = 0;
+    
+    // Get all categories
+    const categoriesSnap = await db.collection("users").doc(uid)
+        .collection("categories").get();
+    
+    categoriesSnap.forEach(doc => {
+      const category = doc.data();
+      const categoryName = category.name;
+      const budgetForCategory = budgetData.categories?.[categoryName] || {};
+      const spendingForCategory = spendingByCategory[categoryName] || { total: 0, subcategories: {} };
+      
+      // Calculate totals for this category
+      let categoryBudgetTotal = 0;
+      const subcategoriesData = [];
+      
+      // Handle subcategories
+      (category.subcategories || []).forEach(sub => {
+        const subBudget = budgetForCategory[sub] || 0;
+        const subSpent = spendingForCategory.subcategories[sub] || 0;
+        
+        categoryBudgetTotal += subBudget;
+        
+        subcategoriesData.push({
+          subcategory: sub,
+          budgeted: subBudget,
+          spent: subSpent,
+          remaining: subBudget - subSpent,
+        });
+      });
+      
+      // Also check for "All" budget (category-level budget)
+      const categoryLevelBudget = budgetForCategory["All"] || 0;
+      if (categoryLevelBudget > 0) {
+        categoryBudgetTotal += categoryLevelBudget;
+      }
+      
+      categoriesGrouped[categoryName] = {
+        budgeted: categoryBudgetTotal,
+        spent: spendingForCategory.total,
+        remaining: categoryBudgetTotal - spendingForCategory.total,
+        subcategories: subcategoriesData,
+        total: categoryBudgetTotal  // Add explicit total field
+      };
+      
+      totalBudget += categoryBudgetTotal;
+      totalSpent += spendingForCategory.total;
+    });
+    
+    return res.json({
+      success: true,
+      data: {
+        totalBudget,
+        totalSpent,
+        totalRemaining: totalBudget - totalSpent,
+        categoriesGrouped,
+        month: budgetId,
+      },
+    });
+    
+  } catch (error) {
+    console.error("Error fetching budget:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Save/update budget for a specific month
+apiRouter.post("/budgets", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const {year, month, totalBudget, allocations, categories} = req.body;
+    
+    if (!year || !month) {
+      return res.status(400).json({
+        success: false,
+        error: "Year and month are required",
+      });
+    }
+    
+    // Transform allocations array to categories object if allocations is provided
+    let categoriesData = {};
+    
+    if (allocations && Array.isArray(allocations)) {
+      // Frontend sends allocations array format
+      allocations.forEach(({category, subcategory, amount}) => {
+        if (!categoriesData[category]) {
+          categoriesData[category] = {};
+        }
+        // Store subcategory budget (or "All" for category-level)
+        categoriesData[category][subcategory || "General"] = amount || 0;
+      });
+    } else if (categories) {
+      // Direct categories object format (backward compatibility)
+      categoriesData = categories;
+    }
+    
+    const budgetId = `${year}-${String(month).padStart(2, '0')}`;
+    
+    await db.collection("users").doc(uid)
+        .collection("budgets").doc(budgetId).set({
+      totalBudget: totalBudget || 0,
+      categories: categoriesData,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    
+    console.log(`Budget saved for ${budgetId}: Total=${totalBudget}, Categories=`, categoriesData);
+    
+    return res.json({
+      success: true,
+      id: budgetId,
+    });
+    
+  } catch (error) {
+    console.error("Error saving budget:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 });
 
