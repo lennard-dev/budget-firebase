@@ -1,0 +1,701 @@
+<style>
+  .test-container {
+    max-width: 1200px;
+    margin: 40px auto;
+    padding: 20px;
+  }
+  .test-section {
+    background: white;
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .test-section h2 {
+    margin-top: 0;
+    color: #333;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 12px;
+  }
+  .test-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+  }
+  .test-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 16px;
+    background: #f8f9fa;
+  }
+  .test-card h3 {
+    margin-top: 0;
+    color: #495057;
+    font-size: 16px;
+  }
+  .test-button {
+    background: #1a73e8;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 8px;
+    margin-bottom: 8px;
+  }
+  .test-button:hover {
+    background: #1557b0;
+  }
+  .test-button.danger {
+    background: #dc3545;
+  }
+  .test-button.danger:hover {
+    background: #c82333;
+  }
+  .test-result {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    background: #e8f0fe;
+    border: 1px solid #1a73e8;
+    white-space: pre-wrap;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .test-result.error {
+    background: #fee;
+    border-color: #dc3545;
+  }
+  .test-result.success {
+    background: #d4edda;
+    border-color: #28a745;
+  }
+  .integrity-check {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 20px;
+  }
+  .balance-display {
+    padding: 12px;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+  }
+  .balance-display h4 {
+    margin-top: 0;
+    color: #495057;
+  }
+  .balance-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #1a73e8;
+  }
+</style>
+
+<div class="test-container">
+  <h1>Balance Edit Testing Suite</h1>
+  
+  <!-- Test Scenarios Section -->
+  <div class="test-section">
+    <h2>Test Editing Scenarios</h2>
+    <div class="test-grid">
+      <!-- Scenario 1: Edit Amount -->
+      <div class="test-card">
+        <h3>1. Edit Past Expense Amount</h3>
+        <p>Change amount of an existing cash expense</p>
+        <button class="test-button" onclick="testEditAmount()">Run Test</button>
+        <div id="test-amount-result" class="test-result" style="display:none;"></div>
+      </div>
+      
+      <!-- Scenario 2: Change Payment Method Cash to Bank -->
+      <div class="test-card">
+        <h3>2. Change Payment: Cash → Bank</h3>
+        <p>Convert cash expense to bank transfer</p>
+        <button class="test-button" onclick="testCashToBank()">Run Test</button>
+        <div id="test-cash-bank-result" class="test-result" style="display:none;"></div>
+      </div>
+      
+      <!-- Scenario 3: Change Payment Method Bank to Cash -->
+      <div class="test-card">
+        <h3>3. Change Payment: Bank → Cash</h3>
+        <p>Convert bank expense to cash payment</p>
+        <button class="test-button" onclick="testBankToCash()">Run Test</button>
+        <div id="test-bank-cash-result" class="test-result" style="display:none;"></div>
+      </div>
+      
+      <!-- Scenario 4: Change Date -->
+      <div class="test-card">
+        <h3>4. Change Transaction Date</h3>
+        <p>Move transaction to different date</p>
+        <button class="test-button" onclick="testDateChange()">Run Test</button>
+        <div id="test-date-result" class="test-result" style="display:none;"></div>
+      </div>
+      
+      <!-- Scenario 5: Delete Transaction -->
+      <div class="test-card">
+        <h3>5. Delete Past Transaction</h3>
+        <p>Remove transaction and recalculate</p>
+        <button class="test-button danger" onclick="testDelete()">Run Test</button>
+        <div id="test-delete-result" class="test-result" style="display:none;"></div>
+      </div>
+      
+      <!-- Scenario 5b: Delete with Modal -->
+      <div class="test-card">
+        <h3>5b. Delete with Confirmation</h3>
+        <p>Test deletion with impact preview</p>
+        <button class="test-button danger" onclick="testDeleteWithModal()">Run Test</button>
+        <div id="test-delete-modal-result" class="test-result" style="display:none;"></div>
+      </div>
+      
+      <!-- Scenario 6: Bulk Edit -->
+      <div class="test-card">
+        <h3>6. Bulk Edit Multiple</h3>
+        <p>Edit multiple transactions at once</p>
+        <button class="test-button" onclick="testBulkEdit()">Run Test</button>
+        <div id="test-bulk-result" class="test-result" style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Deletion Stress Test -->
+  <div class="test-section">
+    <h2>Deletion Stress Test</h2>
+    <div class="test-grid">
+      <div class="test-card">
+        <h3>Delete Multiple Sequential</h3>
+        <p>Delete 3 sequential transactions and verify balance chain</p>
+        <button class="test-button danger" onclick="testSequentialDeletion()">Run Stress Test</button>
+        <div id="test-sequential-delete-result" class="test-result" style="display:none;"></div>
+      </div>
+      
+      <div class="test-card">
+        <h3>Delete Cash Movement</h3>
+        <p>Test deleting withdrawals/deposits</p>
+        <button class="test-button danger" onclick="testDeleteMovement()">Test Movement Delete</button>
+        <div id="test-movement-delete-result" class="test-result" style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Balance Integrity Check -->
+  <div class="test-section">
+    <h2>Balance Integrity Check</h2>
+    <div class="integrity-check">
+      <div class="balance-display">
+        <h4>Current Cash Balance</h4>
+        <div id="cash-balance" class="balance-value">Loading...</div>
+      </div>
+      <div class="balance-display">
+        <h4>Current Bank Balance</h4>
+        <div id="bank-balance" class="balance-value">Loading...</div>
+      </div>
+    </div>
+    <button class="test-button" onclick="validateIntegrity()" style="margin-top: 20px;">
+      Validate All Balances
+    </button>
+    <div id="integrity-result" class="test-result" style="display:none; margin-top: 12px;"></div>
+  </div>
+  
+  <!-- Transaction History -->
+  <div class="test-section">
+    <h2>Recent Transaction Edits</h2>
+    <div id="edit-history" style="margin-top: 20px;">
+      <p>No recent edits</p>
+    </div>
+  </div>
+</div>
+
+<script>
+// Initialize page
+window.registerPageInitializer('test-balance-edit', async function() {
+  console.log('Balance Edit Testing Suite initialized');
+  await loadCurrentBalances();
+  await loadEditHistory();
+});
+
+// Load current balances
+async function loadCurrentBalances() {
+  try {
+    const [expensesRes, movementsRes] = await Promise.all([
+      window.callApi('/expenses?limit=1&sortBy=date&order=desc'),
+      window.callApi('/cash-movements?limit=1&sortBy=date&order=desc')
+    ]);
+    
+    const latestExpense = expensesRes.data?.[0];
+    const latestMovement = movementsRes.data?.[0];
+    
+    let cashBalance = 'N/A';
+    let bankBalance = 'N/A';
+    
+    if (latestExpense && (!latestMovement || latestExpense.date >= latestMovement.date)) {
+      cashBalance = latestExpense.cash_balance_after ? `€${latestExpense.cash_balance_after.toFixed(2)}` : 'N/A';
+      bankBalance = latestExpense.bank_balance_after ? `€${latestExpense.bank_balance_after.toFixed(2)}` : 'N/A';
+    } else if (latestMovement) {
+      cashBalance = latestMovement.cash_balance_after ? `€${latestMovement.cash_balance_after.toFixed(2)}` : 'N/A';
+      bankBalance = latestMovement.bank_balance_after ? `€${latestMovement.bank_balance_after.toFixed(2)}` : 'N/A';
+    }
+    
+    document.getElementById('cash-balance').textContent = cashBalance;
+    document.getElementById('bank-balance').textContent = bankBalance;
+  } catch (error) {
+    console.error('Failed to load balances:', error);
+  }
+}
+
+// Load edit history
+async function loadEditHistory() {
+  const historyEl = document.getElementById('edit-history');
+  
+  try {
+    // Get recent audit logs
+    if (window.BalanceManager) {
+      const logs = await window.BalanceManager.getAuditLogs({ 
+        action: 'edit',
+        limit: 10 
+      });
+      
+      if (logs && logs.length > 0) {
+        let html = '<table class="table"><tr><th>Date</th><th>Transaction</th><th>Changes</th></tr>';
+        logs.forEach(log => {
+          html += `<tr>
+            <td>${new Date(log.timestamp).toLocaleString()}</td>
+            <td>${log.transaction_id}</td>
+            <td>${log.changes || 'N/A'}</td>
+          </tr>`;
+        });
+        html += '</table>';
+        historyEl.innerHTML = html;
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load history:', error);
+  }
+}
+
+// Test 1: Edit Amount
+async function testEditAmount() {
+  const resultEl = document.getElementById('test-amount-result');
+  resultEl.style.display = 'block';
+  resultEl.className = 'test-result';
+  resultEl.textContent = 'Running test...';
+  
+  try {
+    // Get a recent cash expense
+    const expensesRes = await window.callApi('/expenses?paymentMethod=Cash&limit=1');
+    if (!expensesRes.data || expensesRes.data.length === 0) {
+      throw new Error('No cash expenses found. Create one first.');
+    }
+    
+    const expense = expensesRes.data[0];
+    const oldAmount = expense.amount;
+    const newAmount = oldAmount * 1.5; // Increase by 50%
+    
+    // Edit the expense
+    const result = await window.TransactionEditor.editExpense(expense.id, {
+      amount: newAmount
+    });
+    
+    resultEl.className = 'test-result success';
+    resultEl.textContent = `✅ Test passed!
+Original amount: €${oldAmount}
+New amount: €${newAmount}
+Transactions recalculated: ${result.recalculation?.affectedCount || 0}`;
+    
+    await loadCurrentBalances();
+  } catch (error) {
+    resultEl.className = 'test-result error';
+    resultEl.textContent = `❌ Test failed: ${error.message}`;
+  }
+}
+
+// Test 2: Cash to Bank
+async function testCashToBank() {
+  const resultEl = document.getElementById('test-cash-bank-result');
+  resultEl.style.display = 'block';
+  resultEl.className = 'test-result';
+  resultEl.textContent = 'Running test...';
+  
+  try {
+    // Get a cash expense
+    const expensesRes = await window.callApi('/expenses?paymentMethod=Cash&limit=1');
+    if (!expensesRes.data || expensesRes.data.length === 0) {
+      throw new Error('No cash expenses found. Create one first.');
+    }
+    
+    const expense = expensesRes.data[0];
+    
+    // Change to Bank Transfer
+    const result = await window.TransactionEditor.editExpense(expense.id, {
+      paymentMethod: 'Bank Transfer'
+    });
+    
+    resultEl.className = 'test-result success';
+    resultEl.textContent = `✅ Test passed!
+Changed from Cash to Bank Transfer
+Amount: €${expense.amount}
+Transactions recalculated: ${result.recalculation?.affectedCount || 0}
+Affected accounts: ${result.recalculation?.affectedAccounts?.join(', ') || 'N/A'}`;
+    
+    await loadCurrentBalances();
+  } catch (error) {
+    resultEl.className = 'test-result error';
+    resultEl.textContent = `❌ Test failed: ${error.message}`;
+  }
+}
+
+// Test 3: Bank to Cash
+async function testBankToCash() {
+  const resultEl = document.getElementById('test-bank-cash-result');
+  resultEl.style.display = 'block';
+  resultEl.className = 'test-result';
+  resultEl.textContent = 'Running test...';
+  
+  try {
+    // Get a bank/card expense
+    const expensesRes = await window.callApi('/expenses?limit=100');
+    const bankExpense = expensesRes.data?.find(e => 
+      e.paymentMethod === 'Card' || e.paymentMethod === 'Bank Transfer'
+    );
+    
+    if (!bankExpense) {
+      throw new Error('No bank/card expenses found. Create one first.');
+    }
+    
+    // Change to Cash
+    const result = await window.TransactionEditor.editExpense(bankExpense.id, {
+      paymentMethod: 'Cash'
+    });
+    
+    resultEl.className = 'test-result success';
+    resultEl.textContent = `✅ Test passed!
+Changed from ${bankExpense.paymentMethod} to Cash
+Amount: €${bankExpense.amount}
+Transactions recalculated: ${result.recalculation?.affectedCount || 0}
+Affected accounts: ${result.recalculation?.affectedAccounts?.join(', ') || 'N/A'}`;
+    
+    await loadCurrentBalances();
+  } catch (error) {
+    resultEl.className = 'test-result error';
+    resultEl.textContent = `❌ Test failed: ${error.message}`;
+  }
+}
+
+// Test 4: Date Change
+async function testDateChange() {
+  const resultEl = document.getElementById('test-date-result');
+  resultEl.style.display = 'block';
+  resultEl.className = 'test-result';
+  resultEl.textContent = 'Running test...';
+  
+  try {
+    // Get a recent expense
+    const expensesRes = await window.callApi('/expenses?limit=1&sortBy=date&order=desc');
+    if (!expensesRes.data || expensesRes.data.length === 0) {
+      throw new Error('No expenses found.');
+    }
+    
+    const expense = expensesRes.data[0];
+    const oldDate = expense.date;
+    const newDate = new Date(oldDate);
+    newDate.setDate(newDate.getDate() - 7); // Move 7 days earlier
+    
+    // Change date
+    const result = await window.TransactionEditor.editExpense(expense.id, {
+      date: newDate.toISOString().split('T')[0]
+    });
+    
+    resultEl.className = 'test-result success';
+    resultEl.textContent = `✅ Test passed!
+Moved from ${oldDate} to ${newDate.toISOString().split('T')[0]}
+Transactions recalculated: ${result.recalculation?.affectedCount || 0}`;
+    
+    await loadCurrentBalances();
+  } catch (error) {
+    resultEl.className = 'test-result error';
+    resultEl.textContent = `❌ Test failed: ${error.message}`;
+  }
+}
+
+// Test 5: Delete
+async function testDelete() {
+  const resultEl = document.getElementById('test-delete-result');
+  resultEl.style.display = 'block';
+  resultEl.className = 'test-result';
+  resultEl.textContent = 'Running test...';
+  
+  try {
+    // Create a test expense first
+    const testExpense = {
+      date: new Date().toISOString().split('T')[0],
+      amount: 10,
+      category: 'Test',
+      subcategory: 'Delete Test',
+      paymentMethod: 'Cash',
+      description: 'Test expense for deletion',
+      receiptId: 'TEST-DELETE-' + Date.now()
+    };
+    
+    const createRes = await window.callApi('/expenses', {
+      method: 'POST',
+      body: JSON.stringify(testExpense)
+    });
+    
+    if (!createRes.id) {
+      throw new Error('Failed to create test expense');
+    }
+    
+    // Delete it
+    const result = await window.TransactionEditor.deleteTransaction(createRes.id, 'expense');
+    
+    resultEl.className = 'test-result success';
+    resultEl.textContent = `✅ Test passed!
+Created and deleted test expense
+Amount: €${testExpense.amount}
+Transactions recalculated: ${result.recalculation?.affectedCount || 0}`;
+    
+    await loadCurrentBalances();
+  } catch (error) {
+    resultEl.className = 'test-result error';
+    resultEl.textContent = `❌ Test failed: ${error.message}`;
+  }
+}
+
+// Test 5b: Delete with Modal
+async function testDeleteWithModal() {
+  const resultEl = document.getElementById('test-delete-modal-result');
+  resultEl.style.display = 'block';
+  resultEl.className = 'test-result';
+  resultEl.textContent = 'Setting up test...';
+  
+  try {
+    // Get a recent expense
+    const expensesRes = await window.callApi('/expenses?limit=5&sortBy=date&order=desc');
+    if (!expensesRes.data || expensesRes.data.length === 0) {
+      throw new Error('No expenses found to test deletion');
+    }
+    
+    // Find an expense in the middle (not the most recent)
+    const expense = expensesRes.data[2] || expensesRes.data[0];
+    
+    resultEl.textContent = `Selected expense: €${expense.amount} from ${expense.date}
+Opening delete confirmation modal...`;
+    
+    // Open the delete confirmation modal
+    if (window.openDeleteConfirmation) {
+      window.openDeleteConfirmation(expense.id, 'expense', expense);
+      
+      resultEl.className = 'test-result success';
+      resultEl.textContent = `✅ Test setup complete!
+Expense: €${expense.amount} (${expense.paymentMethod})
+Date: ${expense.date}
+Category: ${expense.category}
+
+Delete confirmation modal opened. 
+Check the modal for balance impact preview and affected transaction count.
+Complete the deletion in the modal to test the full flow.`;
+    } else {
+      throw new Error('Delete confirmation modal not loaded');
+    }
+    
+  } catch (error) {
+    resultEl.className = 'test-result error';
+    resultEl.textContent = `❌ Test failed: ${error.message}`;
+  }
+}
+
+// Test 6: Bulk Edit
+async function testBulkEdit() {
+  const resultEl = document.getElementById('test-bulk-result');
+  resultEl.style.display = 'block';
+  resultEl.className = 'test-result';
+  resultEl.textContent = 'Running test...';
+  
+  try {
+    // Get multiple expenses
+    const expensesRes = await window.callApi('/expenses?limit=3');
+    if (!expensesRes.data || expensesRes.data.length < 2) {
+      throw new Error('Need at least 2 expenses for bulk edit test');
+    }
+    
+    const expenseIds = expensesRes.data.slice(0, 2).map(e => e.id);
+    
+    // Bulk edit category
+    const result = await window.TransactionEditor.bulkEdit(expenseIds, {
+      category: 'Test',
+      subcategory: 'Bulk Edit'
+    });
+    
+    resultEl.className = 'test-result success';
+    resultEl.textContent = `✅ Test passed!
+Edited ${result.results.length} expenses
+Errors: ${result.errors.length}
+${result.summary}`;
+    
+    await loadCurrentBalances();
+  } catch (error) {
+    resultEl.className = 'test-result error';
+    resultEl.textContent = `❌ Test failed: ${error.message}`;
+  }
+}
+
+// Test sequential deletion
+async function testSequentialDeletion() {
+  const resultEl = document.getElementById('test-sequential-delete-result');
+  resultEl.style.display = 'block';
+  resultEl.className = 'test-result';
+  resultEl.textContent = 'Running sequential deletion test...';
+  
+  try {
+    // Create 3 test transactions
+    const testTransactions = [];
+    const baseDate = new Date();
+    
+    for (let i = 0; i < 3; i++) {
+      const date = new Date(baseDate);
+      date.setDate(date.getDate() - (10 - i)); // 10, 9, 8 days ago
+      
+      const testExpense = {
+        date: date.toISOString().split('T')[0],
+        amount: 100 + (i * 10), // 100, 110, 120
+        category: 'Test',
+        subcategory: 'Sequential Delete',
+        paymentMethod: 'Cash',
+        description: `Test sequential delete ${i + 1}`,
+        receiptId: `TEST-SEQ-${Date.now()}-${i}`
+      };
+      
+      const createRes = await window.callApi('/expenses', {
+        method: 'POST',
+        body: JSON.stringify(testExpense)
+      });
+      
+      if (createRes.id) {
+        testTransactions.push({ id: createRes.id, ...testExpense });
+      }
+    }
+    
+    resultEl.textContent = `Created ${testTransactions.length} test transactions. Now deleting...`;
+    
+    // Delete them in reverse order
+    let deleteCount = 0;
+    for (const transaction of testTransactions.reverse()) {
+      const result = await window.TransactionEditor.deleteTransaction(transaction.id, 'expense');
+      if (result.success) {
+        deleteCount++;
+        resultEl.textContent = `Deleted ${deleteCount}/${testTransactions.length}. Recalculated ${result.recalculation.affectedCount} transactions...`;
+      }
+    }
+    
+    // Validate integrity
+    const validation = await window.BalanceRecalculation.validateBalanceIntegrity();
+    
+    if (validation.valid) {
+      resultEl.className = 'test-result success';
+      resultEl.textContent = `✅ Sequential deletion test PASSED!
+Deleted ${deleteCount} transactions successfully.
+Balance integrity maintained throughout.
+Final Cash: €${validation.finalCash.toFixed(2)}
+Final Bank: €${validation.finalBank.toFixed(2)}`;
+    } else {
+      throw new Error(`Balance integrity check failed with ${validation.errors.length} errors`);
+    }
+    
+    await loadCurrentBalances();
+    
+  } catch (error) {
+    resultEl.className = 'test-result error';
+    resultEl.textContent = `❌ Sequential deletion test failed: ${error.message}`;
+  }
+}
+
+// Test cash movement deletion
+async function testDeleteMovement() {
+  const resultEl = document.getElementById('test-movement-delete-result');
+  resultEl.style.display = 'block';
+  resultEl.className = 'test-result';
+  resultEl.textContent = 'Testing cash movement deletion...';
+  
+  try {
+    // Create a test withdrawal
+    const testMovement = {
+      date: new Date().toISOString().split('T')[0],
+      type: 'withdrawal',
+      amount: 500,
+      description: 'Test withdrawal for deletion'
+    };
+    
+    const createRes = await window.callApi('/cash-movements', {
+      method: 'POST',
+      body: JSON.stringify(testMovement)
+    });
+    
+    if (!createRes.id) {
+      throw new Error('Failed to create test cash movement');
+    }
+    
+    resultEl.textContent = 'Created test withdrawal. Deleting...';
+    
+    // Delete it
+    const result = await window.TransactionEditor.deleteTransaction(createRes.id, 'movement');
+    
+    if (result.success) {
+      resultEl.className = 'test-result success';
+      resultEl.textContent = `✅ Cash movement deletion test PASSED!
+Movement type: Withdrawal (€${testMovement.amount})
+This reversed the withdrawal:
+- Cash balance: -€${testMovement.amount} (removed from cash)
+- Bank balance: +€${testMovement.amount} (restored to bank)
+Transactions recalculated: ${result.recalculation.affectedCount}`;
+    } else {
+      throw new Error('Deletion failed');
+    }
+    
+    await loadCurrentBalances();
+    
+  } catch (error) {
+    resultEl.className = 'test-result error';
+    resultEl.textContent = `❌ Movement deletion test failed: ${error.message}`;
+  }
+}
+
+// Validate integrity
+async function validateIntegrity() {
+  const resultEl = document.getElementById('integrity-result');
+  resultEl.style.display = 'block';
+  resultEl.className = 'test-result';
+  resultEl.textContent = 'Validating all transaction balances...';
+  
+  try {
+    if (!window.BalanceRecalculation) {
+      throw new Error('Balance Recalculation service not loaded');
+    }
+    
+    const validation = await window.BalanceRecalculation.validateBalanceIntegrity();
+    
+    if (validation.valid) {
+      resultEl.className = 'test-result success';
+      resultEl.textContent = `✅ Balance integrity check PASSED!
+Final Cash Balance: €${validation.finalCash.toFixed(2)}
+Final Bank Balance: €${validation.finalBank.toFixed(2)}
+All transaction balances are correct.`;
+    } else {
+      resultEl.className = 'test-result error';
+      let errorText = `❌ Balance integrity check FAILED!
+Found ${validation.errors.length} errors:\n`;
+      validation.errors.slice(0, 5).forEach(err => {
+        errorText += `\nTransaction ${err.id}: Expected ${err.expected}, Got ${err.actual} (diff: ${err.difference})`;
+      });
+      if (validation.errors.length > 5) {
+        errorText += `\n... and ${validation.errors.length - 5} more errors`;
+      }
+      resultEl.textContent = errorText;
+    }
+  } catch (error) {
+    resultEl.className = 'test-result error';
+    resultEl.textContent = `❌ Validation failed: ${error.message}`;
+  }
+}
+</script>

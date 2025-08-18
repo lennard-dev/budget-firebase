@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Seed Clean Data</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .description {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button.danger {
+            background: #f44336;
+        }
+        button.danger:hover {
+            background: #da190b;
+        }
+        .log {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            color: #4CAF50;
+        }
+        .error {
+            color: #f44336;
+        }
+        .info {
+            color: #2196F3;
+        }
+        .warning {
+            color: #ff9800;
+        }
+    </style>
+    <script src="/__/firebase/12.1.0/firebase-app-compat.js"></script>
+    <script src="/__/firebase/12.1.0/firebase-auth-compat.js"></script>
+    <script src="/__/firebase/12.1.0/firebase-firestore-compat.js"></script>
+    <script src="/__/firebase/init.js"></script>
+    <script src="/firebase-config.js"></script>
+    <script src="/app.js"></script>
+    <script src="/transaction-service.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>🌱 Seed Clean Data</h1>
+        <p class="description">
+            This tool will populate the database with clean test data using the new QuickBooks-style backend.
+            All data is properly structured with transactions, ledger entries, and account balances.
+            <br><br>
+            <strong>🔧 Enhanced Features:</strong>
+            <ul style="text-align: left; margin: 10px 0;">
+                <li>✅ Complete payment method information for ALL expenses (Cash, Card, Bank Transfer)</li>
+                <li>✅ Realistic payment method distribution based on expense categories and amounts</li>
+                <li>✅ Improved expense descriptions with contextual details</li>
+                <li>✅ Enhanced data verification including payment method validation</li>
+                <li>✅ Separate clear functions for different data cleanup needs</li>
+            </ul>
+        </p>
+        
+        <div>
+            <button onclick="clearAllData();" class="danger">🔄 Reset Balances</button>
+            <button onclick="clearTransactions();" class="danger">🗑️ Clear All Transactions</button>
+            <button onclick="deleteAllExpenses();" class="danger">💸 Delete All Expenses Only</button>
+            <button onclick="seedBasicData();">📊 Seed Basic Data</button>
+            <button onclick="seed20Expenses();" style="background: #10b981;">💰 Add 20 Sample Expenses</button>
+            <button onclick="seedFullData();">📈 Seed Full Dataset</button>
+            <button onclick="verifyData();">✅ Verify Data Integrity</button>
+            <button onclick="diagnosePaymentMethods();" style="background: #7c3aed;">🔍 Diagnose Payment Methods</button>
+            <button onclick="fixMissingPaymentMethods();" style="background: #059669;">🔧 Fix Missing Payment Methods</button>
+            <button onclick="removeDuplicateCategories();" style="background: #ff5722;">🔧 Remove Duplicate Categories</button>
+            <button onclick="fixCashExpensesComprehensive();" style="background: #dc2626;">🚨 Fix Cash Expenses & Labels</button>
+        </div>
+        
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+    // Logging utility
+    function log(message, type = 'info') {
+        const logDiv = document.getElementById('log');
+        const timestamp = new Date().toLocaleTimeString();
+        const entry = document.createElement('div');
+        entry.className = type;
+        entry.textContent = `[${timestamp}] ${message}`;
+        logDiv.appendChild(entry);
+        logDiv.scrollTop = logDiv.scrollHeight;
+        console.log(message);
+    }
+
+    // Clear all data
+    async function clearAllData() {
+        if (!confirm('This will RESET all ledger entries and account balances to zero. Note: Transaction history will remain for audit purposes. Continue?')) {
+            return;
+        }
+        
+        try {
+            log('Resetting ledger and balances...', 'warning');
+            
+            // The rebuildLedger endpoint clears all ledger entries and account balances,
+            // then recalculates everything from existing transactions
+            // This resets the calculated balances while preserving transaction audit trail
+            await TransactionService.rebuildLedger();
+            
+            log('Ledger and balances reset successfully', 'success');
+            
+            // Verify the reset
+            const balances = await TransactionService.getBalances();
+            log(`Current balances - Cash: €${balances.cash.toFixed(2)}, Bank: €${balances.bank.toFixed(2)}`, 'info');
+            
+            // Check transaction count
+            const transactions = await TransactionService.getList({ limit: 1000 });
+            log(`Transaction history: ${transactions.length} transactions preserved`, 'info');
+            
+        } catch (error) {
+            log(`Error resetting data: ${error.message}`, 'error');
+        }
+    }
+
+    // Delete all expenses only (keeps income and transfers)
+    async function deleteAllExpenses() {
+        if (!confirm('This will DELETE ALL EXPENSES permanently. Income and transfers will remain. Continue?')) {
+            return;
+        }
+        
+        try {
+            log('Fetching all expenses for deletion...', 'warning');
+            
+            // Get all expenses using TransactionService
+            const transactions = await TransactionService.getList({ 
+                type: 'expense',
+                limit: 10000 
+            });
+            
+            log(`Found ${transactions.length} expenses to delete`, 'info');
+            
+            if (transactions.length === 0) {
+                log('No expenses found to delete', 'info');
+                return;
+            }
+            
+            let deletedCount = 0;
+            let failedCount = 0;
+            
+            // Delete each expense using the new delete method
+            for (const expense of transactions) {
+                try {
+                    await TransactionService.delete(expense.id);
+                    deletedCount++;
+                    
+                    // Log progress every 10 deletions
+                    if (deletedCount % 10 === 0) {
+                        log(`Deleted ${deletedCount} expenses...`, 'info');
+                    }
+                } catch (error) {
+                    console.error(`Failed to delete expense ${expense.id}:`, error);
+                    failedCount++;
+                }
+            }
+            
+            log(`Successfully deleted ${deletedCount} expenses`, 'success');
+            if (failedCount > 0) {
+                log(`Failed to delete ${failedCount} expenses`, 'warning');
+            }
+            
+            // Rebuild ledger to ensure balances are correct
+            log('Rebuilding ledger to recalculate balances...', 'info');
+            await TransactionService.rebuildLedger();
+            
+            // Show final balances
+            const finalBalances = await TransactionService.getBalances();
+            log(`Balances after deletion - Cash: €${finalBalances.cash.toFixed(2)}, Bank: €${finalBalances.bank.toFixed(2)}`, 'success');
+            
+            // Check remaining transactions
+            const remaining = await TransactionService.getList({ limit: 100 });
+            const remainingExpenses = remaining.filter(t => t.type === 'expense');
+            log(`Remaining expenses: ${remainingExpenses.length}`, 'info');
+            log(`Total remaining transactions: ${remaining.length} (income & transfers)`, 'info');
+            
+        } catch (error) {
+            log(`Error deleting expenses: ${error.message}`, 'error');
+        }
+    }
+    
+    // Clear all transactions (for testing purposes)
+    async function clearTransactions() {
+        if (!confirm('This will DELETE ALL TRANSACTIONS permanently. This cannot be undone. Are you absolutely sure?')) {
+            return;
+        }
+        
+        if (!confirm('Last chance: This will permanently delete all transaction data. Continue?')) {
+            return;
+        }
+        
+        try {
+            log('Fetching all transactions for deletion...', 'warning');
+            
+            // Get all transactions 
+            const transactions = await TransactionService.getList({ limit: 10000 });
+            log(`Found ${transactions.length} transactions to delete`, 'info');
+            
+            if (transactions.length === 0) {
+                log('No transactions found to delete', 'info');
+                return;
+            }
+            
+            // Note: Since there's no bulk delete endpoint, we'll have to use the frontend
+            // to clear transactions by calling the Firebase client directly
+            log('Clearing transactions via client (this may take a moment)...', 'warning');
+            
+            // Access Firebase directly
+            const user = firebase.auth().currentUser;
+            if (!user) {
+                throw new Error('Must be authenticated to clear transactions');
+            }
+            
+            // Clear transactions collection
+            const db = firebase.firestore();
+            const transactionsRef = db.collection('users').doc(user.uid).collection('all-transactions');
+            
+            let batch = db.batch();
+            let batchCount = 0;
+            let totalDeleted = 0;
+            
+            for (const transaction of transactions) {
+                batch.delete(transactionsRef.doc(transaction.id));
+                batchCount++;
+                
+                // Firestore batch limit is 500 operations
+                if (batchCount >= 500) {
+                    await batch.commit();
+                    totalDeleted += batchCount;
+                    log(`Deleted ${totalDeleted} transactions...`, 'info');
+                    
+                    // Create new batch
+                    batch = db.batch();
+                    batchCount = 0;
+                }
+            }
+            
+            // Commit remaining transactions
+            if (batchCount > 0) {
+                await batch.commit();
+                totalDeleted += batchCount;
+            }
+            
+            log(`Successfully deleted ${totalDeleted} transactions`, 'success');
+            
+            // Now rebuild the ledger to reset balances
+            log('Rebuilding ledger to reset balances...', 'info');
+            await TransactionService.rebuildLedger();
+            
+            // Verify everything is cleared
+            const finalBalances = await TransactionService.getBalances();
+            const remainingTransactions = await TransactionService.getList({ limit: 10 });
+            
+            log(`All transactions cleared! Balances: Cash €${finalBalances.cash.toFixed(2)}, Bank €${finalBalances.bank.toFixed(2)}`, 'success');
+            log(`Remaining transactions: ${remainingTransactions.length}`, 'info');
+            
+        } catch (error) {
+            log(`Error clearing transactions: ${error.message}`, 'error');
+        }
+    }
+
+    // Seed categories first (with duplicate check)
+    async function seedCategories() {
+        try {
+            log('Checking existing categories...', 'info');
+            
+            // First, get existing categories
+            const existingCategoriesResponse = await window.callApi('/categories');
+            const existingCategories = existingCategoriesResponse.data || [];
+            
+            // Create a map of existing category names for quick lookup
+            const existingCategoryNames = new Set(
+                existingCategories.map(cat => cat.name.toLowerCase())
+            );
+            
+            log(`Found ${existingCategories.length} existing categories`, 'info');
+            
+            const categoriesData = [
+                { 
+                    name: 'Operations', 
+                    code: 'OPS',
+                    subcategories: ['Administrative', 'Office Supplies', 'Communications'],
+                    active: true
+                },
+                { 
+                    name: 'Programs', 
+                    code: 'PRG',
+                    subcategories: ['Direct Aid', 'Education', 'Healthcare', 'Food Distribution'],
+                    active: true
+                },
+                { 
+                    name: 'Facilities', 
+                    code: 'FAC',
+                    subcategories: ['Rent', 'Utilities', 'Maintenance', 'Security'],
+                    active: true
+                },
+                { 
+                    name: 'Transportation', 
+                    code: 'TRN',
+                    subcategories: ['Fuel', 'Vehicle Maintenance', 'Public Transport'],
+                    active: true
+                },
+                { 
+                    name: 'Other', 
+                    code: 'OTH',
+                    subcategories: ['General', 'Miscellaneous'],
+                    active: true
+                }
+            ];
+            
+            // Only create categories that don't exist
+            let createdCount = 0;
+            let skippedCount = 0;
+            
+            for (const cat of categoriesData) {
+                // Check if category already exists
+                if (existingCategoryNames.has(cat.name.toLowerCase())) {
+                    log(`Category ${cat.name} already exists, skipping`, 'info');
+                    skippedCount++;
+                    continue;
+                }
+                
+                try {
+                    await window.callApi('/categories', {
+                        method: 'POST',
+                        body: JSON.stringify(cat)
+                    });
+                    log(`Created category: ${cat.name}`, 'success');
+                    createdCount++;
+                } catch (error) {
+                    log(`Failed to create category ${cat.name}: ${error.message}`, 'warning');
+                }
+            }
+            
+            log(`Categories summary: Created ${createdCount}, Skipped ${skippedCount} (already existed)`, 'success');
+        } catch (error) {
+            log(`Error seeding categories: ${error.message}`, 'error');
+        }
+    }
+    
+    // Seed 20 diverse expenses with actual categories
+    async function seed20Expenses() {
+        try {
+            log('=== CREATING 20 SAMPLE EXPENSES ===', 'info');
+            
+            // First ensure categories exist
+            await seedCategories();
+            
+            // Define realistic expense data with proper categories and subcategories
+            const sampleExpenses = [
+                // Operations expenses
+                { category: 'Operations', subcategory: 'Administrative', description: 'Monthly accounting services', amount: 850, paymentMethod: 'Bank Transfer' },
+                { category: 'Operations', subcategory: 'Office Supplies', description: 'Printer paper and ink cartridges', amount: 125, paymentMethod: 'Card' },
+                { category: 'Operations', subcategory: 'Communications', description: 'Internet and phone service', amount: 180, paymentMethod: 'Bank Transfer' },
+                { category: 'Operations', subcategory: 'Office Supplies', description: 'Notebooks and stationery', amount: 45, paymentMethod: 'Cash' },
+                
+                // Programs expenses
+                { category: 'Programs', subcategory: 'Direct Aid', description: 'Emergency assistance for family', amount: 500, paymentMethod: 'Bank Transfer' },
+                { category: 'Programs', subcategory: 'Education', description: 'School supplies for children', amount: 320, paymentMethod: 'Card' },
+                { category: 'Programs', subcategory: 'Healthcare', description: 'Medical supplies purchase', amount: 450, paymentMethod: 'Card' },
+                { category: 'Programs', subcategory: 'Food Distribution', description: 'Weekly food packages', amount: 750, paymentMethod: 'Cash' },
+                { category: 'Programs', subcategory: 'Direct Aid', description: 'Shelter assistance payment', amount: 1200, paymentMethod: 'Bank Transfer' },
+                
+                // Facilities expenses
+                { category: 'Facilities', subcategory: 'Rent', description: 'Monthly office rent', amount: 2500, paymentMethod: 'Bank Transfer' },
+                { category: 'Facilities', subcategory: 'Utilities', description: 'Electricity bill payment', amount: 280, paymentMethod: 'Bank Transfer' },
+                { category: 'Facilities', subcategory: 'Maintenance', description: 'Building repairs and painting', amount: 650, paymentMethod: 'Card' },
+                { category: 'Facilities', subcategory: 'Security', description: 'Security system monthly fee', amount: 150, paymentMethod: 'Bank Transfer' },
+                
+                // Transportation expenses
+                { category: 'Transportation', subcategory: 'Fuel', description: 'Vehicle fuel for deliveries', amount: 95, paymentMethod: 'Cash' },
+                { category: 'Transportation', subcategory: 'Vehicle Maintenance', description: 'Van service and oil change', amount: 380, paymentMethod: 'Card' },
+                { category: 'Transportation', subcategory: 'Public Transport', description: 'Staff transport passes', amount: 120, paymentMethod: 'Cash' },
+                { category: 'Transportation', subcategory: 'Fuel', description: 'Generator diesel fuel', amount: 180, paymentMethod: 'Cash' },
+                
+                // Other expenses
+                { category: 'Other', subcategory: 'General', description: 'Bank service fees', amount: 35, paymentMethod: 'Bank Transfer' },
+                { category: 'Other', subcategory: 'Miscellaneous', description: 'Emergency supplies', amount: 200, paymentMethod: 'Card' },
+                { category: 'Other', subcategory: 'General', description: 'Small tools and equipment', amount: 150, paymentMethod: 'Cash' }
+            ];
+            
+            // Generate dates for the past 30 days
+            const today = new Date();
+            let successCount = 0;
+            let failCount = 0;
+            
+            for (let i = 0; i < sampleExpenses.length; i++) {
+                const expense = sampleExpenses[i];
+                
+                // Spread expenses over the past 30 days
+                const daysAgo = Math.floor(Math.random() * 30);
+                const expenseDate = new Date(today);
+                expenseDate.setDate(expenseDate.getDate() - daysAgo);
+                
+                try {
+                    // Determine account based on payment method
+                    let account = 'cash';
+                    if (expense.paymentMethod === 'Bank Transfer' || expense.paymentMethod === 'Card') {
+                        account = 'bank';
+                    }
+                    
+                    log(`Creating: ${expense.description} (${expense.category}/${expense.subcategory}) - €${expense.amount} via ${expense.paymentMethod}`, 'info');
+                    
+                    // Create the expense using TransactionService
+                    // The backend will automatically generate the transaction number
+                    const result = await TransactionService.create('expense', {
+                        date: expenseDate.toISOString().split('T')[0],
+                        amount: expense.amount,
+                        description: expense.description,
+                        category: expense.category,
+                        subcategory: expense.subcategory,
+                        paymentMethod: expense.paymentMethod,  // Pass at top level for TransactionService
+                        account: account,
+                        notes: 'Created by seed20Expenses'  // This will be added to metadata
+                    });
+                    
+                    successCount++;
+                    
+                    // Log the transaction number if available
+                    if (result && result.transaction_number) {
+                        log(`  ✓ Created with transaction #: ${result.transaction_number}`, 'success');
+                    }
+                    
+                } catch (error) {
+                    log(`  ✗ Failed to create expense: ${error.message}`, 'error');
+                    failCount++;
+                }
+                
+                // Small delay to avoid overwhelming the API
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            log(`=== COMPLETED ===`, 'info');
+            log(`Successfully created ${successCount} expenses`, 'success');
+            if (failCount > 0) {
+                log(`Failed to create ${failCount} expenses`, 'warning');
+            }
+            
+            // Get and display final balances
+            const balances = await TransactionService.getBalances();
+            log(`Current balances - Cash: €${balances.cash.toFixed(2)}, Bank: €${balances.bank.toFixed(2)}`, 'info');
+            
+            // Verify transaction numbers
+            log('Verifying transaction numbers...', 'info');
+            const recentExpenses = await TransactionService.getList({ 
+                type: 'expense', 
+                limit: 20 
+            });
+            
+            const withTransactionNumbers = recentExpenses.filter(e => e.transaction_number);
+            const withoutTransactionNumbers = recentExpenses.filter(e => !e.transaction_number);
+            
+            log(`Expenses with transaction numbers: ${withTransactionNumbers.length}`, 'success');
+            if (withoutTransactionNumbers.length > 0) {
+                log(`Expenses missing transaction numbers: ${withoutTransactionNumbers.length}`, 'warning');
+                log('Missing transaction numbers for:', 'warning');
+                withoutTransactionNumbers.forEach(e => {
+                    log(`  - ${e.date}: ${e.description}`, 'warning');
+                });
+            }
+            
+            // Display payment method distribution
+            const paymentMethodCounts = {};
+            recentExpenses.forEach(e => {
+                const pm = e.paymentMethod || e.metadata?.paymentMethod || 'Unknown';
+                paymentMethodCounts[pm] = (paymentMethodCounts[pm] || 0) + 1;
+            });
+            
+            log('Payment method distribution:', 'info');
+            Object.entries(paymentMethodCounts).forEach(([method, count]) => {
+                log(`  ${method}: ${count} expenses`, 'info');
+            });
+            
+        } catch (error) {
+            log(`Error creating sample expenses: ${error.message}`, 'error');
+            console.error('Full error:', error);
+        }
+    }
+    
+    // Seed basic data
+    async function seedBasicData() {
+        try {
+            log('Starting basic data seed...', 'info');
+            
+            // Seed categories first
+            await seedCategories();
+            
+            // Initial funding
+            log('Creating initial bank deposit...', 'info');
+            await TransactionService.create('income', {
+                date: '2024-01-01',
+                amount: 10000,
+                description: 'Initial funding from headquarters',
+                category: 'Funding',
+                account: 'bank'
+            });
+            
+            // Bank to cash withdrawal
+            log('Creating cash withdrawal...', 'info');
+            await TransactionService.create('transfer', {
+                date: '2024-01-05',
+                amount: 2000,
+                description: 'Cash withdrawal for operations',
+                subtype: 'withdrawal'
+            });
+            
+            // Some expenses
+            log('Creating expense transactions...', 'info');
+            
+            await TransactionService.create('expense', {
+                date: '2024-01-10',
+                amount: 150,
+                description: 'Office supplies',
+                category: 'Operations',
+                subcategory: 'Office Supplies',
+                paymentMethod: 'Cash'
+            });
+            
+            await TransactionService.create('expense', {
+                date: '2024-01-15',
+                amount: 500,
+                description: 'Internet and phone bills',
+                category: 'Facilities',
+                subcategory: 'Utilities',
+                paymentMethod: 'Bank Transfer'
+            });
+            
+            await TransactionService.create('expense', {
+                date: '2024-01-18',
+                amount: 120,
+                description: 'Food for beneficiaries',
+                category: 'Programs',
+                subcategory: 'Food Distribution',
+                paymentMethod: 'Card'
+            });
+            
+            await TransactionService.create('expense', {
+                date: '2024-01-20',
+                amount: 80,
+                description: 'Fuel for vehicle',
+                category: 'Transportation',
+                subcategory: 'Fuel',
+                paymentMethod: 'Cash'
+            });
+            
+            // Income donation
+            log('Creating donation income...', 'info');
+            await TransactionService.create('income', {
+                date: '2024-01-25',
+                amount: 1500,
+                description: 'Monthly donation from supporter',
+                category: 'Donations',
+                account: 'bank'
+            });
+            
+            log('Basic data seeded successfully!', 'success');
+            
+            // Get final balances
+            const balances = await TransactionService.getBalances();
+            log(`Final balances - Cash: €${balances.cash.toFixed(2)}, Bank: €${balances.bank.toFixed(2)}`, 'success');
+            
+        } catch (error) {
+            log(`Error seeding basic data: ${error.message}`, 'error');
+        }
+    }
+
+    // Seed full dataset
+    async function seedFullData() {
+        try {
+            log('Starting full data seed...', 'info');
+            
+            // Seed categories first
+            await seedCategories();
+            
+            // Generate transactions for the past 3 months
+            const startDate = new Date();
+            startDate.setMonth(startDate.getMonth() - 3);
+            
+            const categories = ['Operations', 'Programs', 'Facilities', 'Transportation', 'Other'];
+            const incomeCategories = ['Donations', 'Grants', 'Funding'];
+            
+            // Payment method mappings for realistic data
+            const paymentMethodsByCategory = {
+                'Operations': ['Cash', 'Card', 'Bank Transfer'],
+                'Programs': ['Bank Transfer', 'Card', 'Cash'],
+                'Facilities': ['Bank Transfer', 'Card'],
+                'Transportation': ['Cash', 'Card'],
+                'Other': ['Cash', 'Card', 'Bank Transfer']
+            };
+            
+            // Initial large funding
+            log('Creating initial funding...', 'info');
+            await TransactionService.create('income', {
+                date: startDate.toISOString().split('T')[0],
+                amount: 50000,
+                description: 'Quarterly grant from foundation',
+                category: 'Grants',
+                account: 'bank'
+            });
+            
+            // Generate regular transactions
+            let currentDate = new Date(startDate);
+            const today = new Date();
+            let transactionCount = 0;
+            
+            while (currentDate <= today) {
+                // Weekly cash withdrawal
+                if (currentDate.getDay() === 1) { // Monday
+                    await TransactionService.create('transfer', {
+                        date: currentDate.toISOString().split('T')[0],
+                        amount: 1000 + Math.random() * 500,
+                        description: 'Weekly cash withdrawal',
+                        subtype: 'withdrawal'
+                    });
+                    transactionCount++;
+                }
+                
+                // Random daily expenses
+                const numExpenses = Math.floor(Math.random() * 3);
+                for (let i = 0; i < numExpenses; i++) {
+                    const category = categories[Math.floor(Math.random() * categories.length)];
+                    const amount = 50 + Math.random() * 300;
+                    
+                    // Choose payment method based on category and amount
+                    let paymentMethod;
+                    const availableMethods = paymentMethodsByCategory[category];
+                    
+                    if (amount < 80) {
+                        // Small amounts: prefer cash
+                        paymentMethod = availableMethods.includes('Cash') ? 'Cash' : availableMethods[0];
+                    } else if (amount < 150) {
+                        // Medium amounts: prefer card
+                        paymentMethod = availableMethods.includes('Card') ? 'Card' : availableMethods[Math.floor(Math.random() * availableMethods.length)];
+                    } else {
+                        // Large amounts: prefer bank transfer
+                        paymentMethod = availableMethods.includes('Bank Transfer') ? 'Bank Transfer' : availableMethods[Math.floor(Math.random() * availableMethods.length)];
+                    }
+                    
+                    // Generate realistic expense descriptions with payment method context
+                    const expenseDescriptions = {
+                        'Operations': ['Office supplies purchase', 'Administrative costs', 'Communications expense', 'Stationery items', 'Printer toner cartridge'],
+                        'Programs': ['Direct aid disbursement', 'Educational materials', 'Healthcare supplies', 'Food distribution costs', 'Program materials'],
+                        'Facilities': ['Monthly rent payment', 'Electricity bill', 'Water service', 'Internet service', 'Building maintenance'],
+                        'Transportation': ['Vehicle fuel purchase', 'Public transport fare', 'Vehicle maintenance', 'Parking fees', 'Transport logistics'],
+                        'Other': ['General expenses', 'Miscellaneous supplies', 'Bank charges', 'Emergency costs', 'Unforeseen expenses']
+                    };
+                    
+                    // Define subcategories for each category
+                    const subcategoriesByCategory = {
+                        'Operations': ['Administrative', 'Office Supplies', 'Communications'],
+                        'Programs': ['Direct Aid', 'Education', 'Healthcare', 'Food Distribution'],
+                        'Facilities': ['Rent', 'Utilities', 'Maintenance', 'Security'],
+                        'Transportation': ['Fuel', 'Vehicle Maintenance', 'Public Transport'],
+                        'Other': ['General', 'Miscellaneous']
+                    };
+                    
+                    const descriptions = expenseDescriptions[category];
+                    const description = descriptions[Math.floor(Math.random() * descriptions.length)];
+                    const subcategories = subcategoriesByCategory[category];
+                    const subcategory = subcategories[Math.floor(Math.random() * subcategories.length)];
+                    
+                    await TransactionService.create('expense', {
+                        date: currentDate.toISOString().split('T')[0],
+                        amount: amount,
+                        description: description,
+                        category: category,
+                        subcategory: subcategory,
+                        paymentMethod: paymentMethod
+                    });
+                    transactionCount++;
+                }
+                
+                // Weekly income (donations)
+                if (currentDate.getDay() === 5 && Math.random() > 0.3) { // Friday
+                    const incomeCategory = incomeCategories[Math.floor(Math.random() * incomeCategories.length)];
+                    await TransactionService.create('income', {
+                        date: currentDate.toISOString().split('T')[0],
+                        amount: 500 + Math.random() * 2000,
+                        description: `${incomeCategory} received`,
+                        category: incomeCategory,
+                        account: Math.random() > 0.8 ? 'cash' : 'bank'
+                    });
+                    transactionCount++;
+                }
+                
+                // Monthly deposit (cash to bank)
+                if (currentDate.getDate() === 28) {
+                    await TransactionService.create('transfer', {
+                        date: currentDate.toISOString().split('T')[0],
+                        amount: 500 + Math.random() * 1000,
+                        description: 'Monthly cash deposit to bank',
+                        subtype: 'deposit'
+                    });
+                    transactionCount++;
+                }
+                
+                // Move to next day
+                currentDate.setDate(currentDate.getDate() + 1);
+                
+                // Log progress
+                if (transactionCount % 10 === 0) {
+                    log(`Created ${transactionCount} transactions...`, 'info');
+                }
+            }
+            
+            log(`Full dataset seeded with ${transactionCount} transactions!`, 'success');
+            
+            // Get final balances
+            const balances = await TransactionService.getBalances();
+            log(`Final balances - Cash: €${balances.cash.toFixed(2)}, Bank: €${balances.bank.toFixed(2)}`, 'success');
+            
+        } catch (error) {
+            log(`Error seeding full data: ${error.message}`, 'error');
+        }
+    }
+
+    // Fix missing payment methods in existing transactions
+    async function fixMissingPaymentMethods() {
+        try {
+            log('=== FIXING MISSING PAYMENT METHODS ===', 'info');
+            
+            // Get ALL transactions
+            const allTransactions = await window.TransactionService.getList({ limit: 1000 });
+            const expenses = allTransactions.filter(t => t.type === 'expense');
+            
+            // Find expenses without payment methods
+            const expensesWithoutPM = expenses.filter(exp => 
+                !exp.paymentMethod && (!exp.metadata || !exp.metadata.paymentMethod)
+            );
+            
+            log(`Found ${expensesWithoutPM.length} expenses without payment methods`, 'info');
+            
+            if (expensesWithoutPM.length === 0) {
+                log('✅ No expenses need fixing!', 'success');
+                return;
+            }
+            
+            let fixed = 0;
+            let failed = 0;
+            
+            for (const exp of expensesWithoutPM) {
+                try {
+                    // Determine payment method based on account
+                    let paymentMethod;
+                    if (exp.account === 'cash') {
+                        paymentMethod = 'Cash';
+                    } else if (exp.account === 'bank') {
+                        // For bank expenses, make an educated guess based on amount
+                        if (exp.amount && Math.abs(exp.amount) > 150) {
+                            paymentMethod = 'Bank Transfer';
+                        } else {
+                            paymentMethod = 'Card';
+                        }
+                    } else {
+                        // Default to Cash if account is unclear
+                        paymentMethod = 'Cash';
+                    }
+                    
+                    log(`Fixing: ${exp.date} - ${exp.description} → ${paymentMethod}`, 'info');
+                    
+                    // Use direct Firestore access since API is having issues with IDs
+                    const user = firebase.auth().currentUser;
+                    if (!user) throw new Error('Not authenticated');
+                    
+                    const db = firebase.firestore();
+                    await db.collection('users').doc(user.uid)
+                        .collection('all-transactions').doc(exp.id)
+                        .update({
+                            metadata: {
+                                ...(exp.metadata || {}),
+                                paymentMethod: paymentMethod
+                            }
+                        });
+                    
+                    fixed++;
+                } catch (error) {
+                    log(`Failed to fix ${exp.id}: ${error.message}`, 'error');
+                    failed++;
+                }
+            }
+            
+            log(`✅ Fixed ${fixed} transactions`, 'success');
+            if (failed > 0) {
+                log(`❌ Failed to fix ${failed} transactions`, 'error');
+            }
+            
+            log('=== FIX COMPLETE ===', 'success');
+            log('Run "Diagnose Payment Methods" again to verify', 'info');
+            
+        } catch (error) {
+            log(`Fix error: ${error.message}`, 'error');
+        }
+    }
+    
+    // Diagnostic function to check what's really in the database
+    async function diagnosePaymentMethods() {
+        try {
+            log('=== PAYMENT METHOD DIAGNOSTIC ===', 'info');
+            
+            // Get ALL transactions
+            const allTransactions = await window.TransactionService.getList({ limit: 1000 });
+            log(`Total transactions in database: ${allTransactions.length}`, 'info');
+            
+            // Check expenses specifically
+            const expenses = allTransactions.filter(t => t.type === 'expense');
+            log(`Total expenses: ${expenses.length}`, 'info');
+            
+            // Analyze payment method presence
+            let hasPaymentMethodTop = 0;
+            let hasPaymentMethodInMetadata = 0;
+            let hasNoPaymentMethod = 0;
+            let sampleMissing = [];
+            
+            expenses.forEach((exp, idx) => {
+                const hasTop = exp.paymentMethod !== null && exp.paymentMethod !== undefined;
+                const hasInMeta = exp.metadata && exp.metadata.paymentMethod;
+                
+                if (hasTop) hasPaymentMethodTop++;
+                if (hasInMeta) hasPaymentMethodInMetadata++;
+                if (!hasTop && !hasInMeta) {
+                    hasNoPaymentMethod++;
+                    if (sampleMissing.length < 3) {
+                        sampleMissing.push({
+                            id: exp.id,
+                            date: exp.date,
+                            description: exp.description,
+                            amount: exp.amount,
+                            metadata: exp.metadata
+                        });
+                    }
+                }
+            });
+            
+            log(`Expenses WITH paymentMethod (top level): ${hasPaymentMethodTop}`, hasPaymentMethodTop > 0 ? 'success' : 'error');
+            log(`Expenses WITH paymentMethod (in metadata): ${hasPaymentMethodInMetadata}`, hasPaymentMethodInMetadata > 0 ? 'success' : 'error');
+            log(`Expenses WITHOUT any paymentMethod: ${hasNoPaymentMethod}`, hasNoPaymentMethod === 0 ? 'success' : 'error');
+            
+            if (sampleMissing.length > 0) {
+                log('Sample of expenses missing payment method:', 'warning');
+                sampleMissing.forEach(s => {
+                    log(`  - ${s.date}: ${s.description} (€${s.amount}) - metadata: ${JSON.stringify(s.metadata)}`, 'warning');
+                });
+            }
+            
+            // Check if these are old transactions
+            const oldestExpense = expenses.reduce((oldest, exp) => {
+                return (!oldest || exp.date < oldest.date) ? exp : oldest;
+            }, null);
+            
+            const newestExpense = expenses.reduce((newest, exp) => {
+                return (!newest || exp.date > newest.date) ? exp : newest;
+            }, null);
+            
+            if (oldestExpense && newestExpense) {
+                log(`Date range: ${oldestExpense.date} to ${newestExpense.date}`, 'info');
+            }
+            
+            log('=== END DIAGNOSTIC ===', 'info');
+            
+        } catch (error) {
+            log(`Diagnostic error: ${error.message}`, 'error');
+        }
+    }
+    
+    // Remove duplicate categories
+    async function removeDuplicateCategories() {
+        try {
+            log('=== REMOVING DUPLICATE CATEGORIES ===', 'info');
+            
+            // Get all categories
+            const response = await window.callApi('/categories');
+            if (!response.success || !response.data) {
+                log('Failed to fetch categories', 'error');
+                return;
+            }
+            
+            const categories = response.data;
+            log(`Found ${categories.length} total categories`, 'info');
+            
+            // Group categories by name to find duplicates
+            const categoryMap = new Map();
+            categories.forEach(cat => {
+                const name = cat.name;
+                if (!categoryMap.has(name)) {
+                    categoryMap.set(name, []);
+                }
+                categoryMap.get(name).push(cat);
+            });
+            
+            // Find and process duplicates
+            let duplicatesFound = 0;
+            let duplicatesRemoved = 0;
+            
+            for (const [name, cats] of categoryMap.entries()) {
+                if (cats.length > 1) {
+                    duplicatesFound++;
+                    log(`Found ${cats.length} categories named "${name}"`, 'warning');
+                    
+                    // Sort by creation date (keep oldest) or by whether it has category_id
+                    cats.sort((a, b) => {
+                        // Prefer categories with category_id
+                        if (a.category_id && !b.category_id) return -1;
+                        if (!a.category_id && b.category_id) return 1;
+                        
+                        // Then by creation date
+                        const dateA = a.createdAt ? new Date(a.createdAt._seconds * 1000) : new Date(0);
+                        const dateB = b.createdAt ? new Date(b.createdAt._seconds * 1000) : new Date(0);
+                        return dateA - dateB;
+                    });
+                    
+                    // Keep the first one, delete the rest
+                    const keepCategory = cats[0];
+                    log(`  Keeping: ${keepCategory.id} (${keepCategory.category_id || 'no ID'})`, 'success');
+                    
+                    // Delete duplicates
+                    for (let i = 1; i < cats.length; i++) {
+                        const deleteCategory = cats[i];
+                        log(`  Deleting duplicate: ${deleteCategory.id} (${deleteCategory.category_id || 'no ID'})`, 'info');
+                        
+                        try {
+                            // Use direct Firebase to delete
+                            const user = firebase.auth().currentUser;
+                            if (!user) throw new Error('Not authenticated');
+                            
+                            const db = firebase.firestore();
+                            await db.collection('users').doc(user.uid)
+                                .collection('categories').doc(deleteCategory.id).delete();
+                            
+                            duplicatesRemoved++;
+                            log(`    ✓ Deleted duplicate category ${deleteCategory.id}`, 'success');
+                        } catch (error) {
+                            log(`    ✗ Failed to delete ${deleteCategory.id}: ${error.message}`, 'error');
+                        }
+                    }
+                }
+            }
+            
+            if (duplicatesFound === 0) {
+                log('✅ No duplicate categories found!', 'success');
+            } else {
+                log(`=== SUMMARY ===`, 'info');
+                log(`Found ${duplicatesFound} sets of duplicate categories`, 'info');
+                log(`Removed ${duplicatesRemoved} duplicate categories`, 'success');
+                
+                // Verify final state
+                const finalResponse = await window.callApi('/categories');
+                const finalCategories = finalResponse.data || [];
+                log(`Final category count: ${finalCategories.length}`, 'info');
+                
+                // Check for remaining duplicates
+                const finalNames = new Set();
+                const stillDuplicates = [];
+                finalCategories.forEach(cat => {
+                    if (finalNames.has(cat.name)) {
+                        stillDuplicates.push(cat.name);
+                    }
+                    finalNames.add(cat.name);
+                });
+                
+                if (stillDuplicates.length > 0) {
+                    log(`⚠️ Still have duplicates for: ${stillDuplicates.join(', ')}`, 'warning');
+                } else {
+                    log('✅ All duplicates successfully removed!', 'success');
+                }
+            }
+            
+        } catch (error) {
+            log(`Error removing duplicate categories: ${error.message}`, 'error');
+            console.error('Full error:', error);
+        }
+    }
+    
+    // Verify data integrity
+    async function verifyData() {
+        try {
+            log('Verifying data integrity...', 'info');
+            
+            // Get balances
+            const balances = await TransactionService.getBalances();
+            log(`Current balances - Cash: €${balances.cash.toFixed(2)}, Bank: €${balances.bank.toFixed(2)}`, 'info');
+            
+            // Get recent transactions
+            const transactions = await TransactionService.getList({ limit: 10 });
+            log(`Found ${transactions.length} recent transactions`, 'info');
+            
+            // Get ledger entries
+            const cashLedger = await TransactionService.getLedger('cash', { limit: 5 });
+            const bankLedger = await TransactionService.getLedger('bank', { limit: 5 });
+            log(`Cash ledger has ${cashLedger.length} recent entries`, 'info');
+            log(`Bank ledger has ${bankLedger.length} recent entries`, 'info');
+            
+            // Verify ledger continuity
+            let cashValid = true;
+            let bankValid = true;
+            
+            for (let i = 0; i < cashLedger.length - 1; i++) {
+                if (cashLedger[i].balance_before !== cashLedger[i + 1].balance_after) {
+                    cashValid = false;
+                    log(`Cash ledger discontinuity at entry ${i}`, 'error');
+                }
+            }
+            
+            for (let i = 0; i < bankLedger.length - 1; i++) {
+                if (bankLedger[i].balance_before !== bankLedger[i + 1].balance_after) {
+                    bankValid = false;
+                    log(`Bank ledger discontinuity at entry ${i}`, 'error');
+                }
+            }
+            
+            if (cashValid && bankValid) {
+                log('✅ Ledger continuity verified', 'success');
+            }
+            
+            // Check for voided transactions
+            const allTransactions = await TransactionService.getList({ limit: 1000 });
+            const voidedCount = allTransactions.filter(t => t.voided).length;
+            if (voidedCount > 0) {
+                log(`Found ${voidedCount} voided transactions`, 'warning');
+            }
+            
+            // Verify payment method data integrity
+            const expenses = allTransactions.filter(t => t.type === 'expense');
+            // Check both top-level paymentMethod (extracted by backend) and metadata.paymentMethod
+            const expensesWithoutPaymentMethod = expenses.filter(t => !t.paymentMethod && !t.metadata?.paymentMethod);
+            const paymentMethodCounts = {};
+            
+            expenses.forEach(exp => {
+                // Check both locations - backend extracts to top level
+                const pm = exp.paymentMethod || exp.metadata?.paymentMethod || 'Unknown';
+                paymentMethodCounts[pm] = (paymentMethodCounts[pm] || 0) + 1;
+            });
+            
+            log(`Expense payment methods: ${Object.entries(paymentMethodCounts).map(([pm, count]) => `${pm}: ${count}`).join(', ')}`, 'info');
+            
+            if (expensesWithoutPaymentMethod.length > 0) {
+                log(`⚠️ Found ${expensesWithoutPaymentMethod.length} expenses without payment method metadata!`, 'warning');
+            } else {
+                log('✅ All expenses have payment method information', 'success');
+            }
+            
+            // Verify account assignment matches payment method
+            const cashExpenses = expenses.filter(t => t.account === 'cash');
+            const bankExpenses = expenses.filter(t => t.account === 'bank');
+            // Check both locations for payment method
+            const cashMismatch = cashExpenses.filter(t => {
+                const pm = t.paymentMethod || t.metadata?.paymentMethod;
+                return pm !== 'Cash';
+            }).length;
+            const bankMismatch = bankExpenses.filter(t => {
+                const pm = t.paymentMethod || t.metadata?.paymentMethod;
+                return pm === 'Cash';
+            }).length;
+            
+            if (cashMismatch > 0 || bankMismatch > 0) {
+                log(`⚠️ Account/payment method mismatch: ${cashMismatch} cash account with non-cash payment, ${bankMismatch} bank account with cash payment`, 'warning');
+            } else {
+                log('✅ All account assignments match payment methods', 'success');
+            }
+            
+            log('Data integrity check complete!', 'success');
+            
+        } catch (error) {
+            log(`Error verifying data: ${error.message}`, 'error');
+        }
+    }
+
+    // Comprehensive fix for cash expenses and payment method issues
+    async function fixCashExpensesComprehensive() {
+        try {
+            log('=== COMPREHENSIVE CASH EXPENSE FIX ===', 'warning');
+            log('This will fix cash expense account assignments and payment method labels', 'info');
+            
+            // Fetch all expenses
+            const expenses = await TransactionService.getList({ type: 'expense', limit: 1000 });
+            log(`Found ${expenses.length} total expenses to review`, 'info');
+            
+            // Define which expenses should be Cash based on their descriptions
+            const cashExpenseDescriptions = [
+                'Notebooks and stationery',
+                'Weekly food packages',
+                'Vehicle fuel for deliveries',
+                'Staff transport passes',
+                'Generator diesel fuel',
+                'Small tools and equipment',
+                'Local market supplies',
+                'Petty cash expenses',
+                'Emergency cash assistance',
+                'Local transport costs'
+            ];
+            
+            // Define which should be Bank Transfer based on descriptions
+            const bankTransferDescriptions = [
+                'Monthly accounting services',
+                'Internet and phone service',
+                'Emergency assistance for family',
+                'Shelter assistance payment',
+                'Monthly office rent',
+                'Electricity bill payment',
+                'Security system monthly fee',
+                'Bank service fees',
+                'Wire transfer fees',
+                'Monthly subscription services',
+                'Utility payments',
+                'Vendor payments',
+                'Professional services'
+            ];
+            
+            let fixedCount = 0;
+            let cashCount = 0;
+            let cardCount = 0;
+            let bankTransferCount = 0;
+            
+            for (const expense of expenses) {
+                let needsUpdate = false;
+                let updates = {};
+                let targetPaymentMethod = expense.paymentMethod || expense.metadata?.paymentMethod;
+                
+                // Determine correct payment method based on description
+                const description = expense.description || '';
+                
+                // Check if it should be a Cash expense
+                if (cashExpenseDescriptions.some(desc => description.includes(desc))) {
+                    targetPaymentMethod = 'Cash';
+                    if (expense.account !== 'cash' || expense.paymentMethod !== 'Cash') {
+                        needsUpdate = true;
+                        updates.account = 'cash';
+                        updates.paymentMethod = 'Cash';
+                        updates.metadata = {
+                            ...expense.metadata,
+                            paymentMethod: 'Cash'
+                        };
+                        log(`Fixing to Cash: ${description}`, 'info');
+                    }
+                    cashCount++;
+                }
+                // Check if it should be Bank Transfer
+                else if (bankTransferDescriptions.some(desc => description.includes(desc))) {
+                    targetPaymentMethod = 'Bank Transfer';
+                    if (expense.account !== 'bank' || expense.paymentMethod !== 'Bank Transfer') {
+                        needsUpdate = true;
+                        updates.account = 'bank';
+                        updates.paymentMethod = 'Bank Transfer';
+                        updates.metadata = {
+                            ...expense.metadata,
+                            paymentMethod: 'Bank Transfer'
+                        };
+                        log(`Fixing to Bank Transfer: ${description}`, 'info');
+                    }
+                    bankTransferCount++;
+                }
+                // Everything else defaults to Card
+                else {
+                    targetPaymentMethod = targetPaymentMethod || 'Card';
+                    if (targetPaymentMethod === 'Card') {
+                        if (expense.account !== 'bank' || expense.paymentMethod !== 'Card') {
+                            needsUpdate = true;
+                            updates.account = 'bank';
+                            updates.paymentMethod = 'Card';
+                            updates.metadata = {
+                                ...expense.metadata,
+                                paymentMethod: 'Card'
+                            };
+                            log(`Fixing to Card: ${description}`, 'info');
+                        }
+                        cardCount++;
+                    }
+                }
+                
+                // Apply the update if needed
+                if (needsUpdate) {
+                    try {
+                        // Use direct API call to update the transaction
+                        const response = await window.callApi(`/transactions/${expense.id}`, {
+                            method: 'PUT',
+                            body: JSON.stringify({
+                                ...expense,
+                                ...updates,
+                                // Ensure we preserve all original data
+                                date: expense.date,
+                                amount: expense.amount,
+                                type: expense.type,
+                                category: expense.category,
+                                subcategory: expense.subcategory,
+                                description: expense.description
+                            })
+                        });
+                        
+                        if (response.success) {
+                            fixedCount++;
+                        } else {
+                            log(`Failed to update expense ${expense.id}: ${response.error}`, 'error');
+                        }
+                    } catch (error) {
+                        log(`Error updating expense ${expense.id}: ${error.message}`, 'error');
+                    }
+                }
+            }
+            
+            log(`Fixed ${fixedCount} expenses`, 'success');
+            log(`Distribution: Cash: ${cashCount}, Card: ${cardCount}, Bank Transfer: ${bankTransferCount}`, 'info');
+            
+            // Rebuild the ledger to ensure everything is in sync
+            log('Rebuilding ledger to sync all changes...', 'info');
+            await TransactionService.rebuildLedger();
+            
+            // Verify the results
+            const balances = await TransactionService.getBalances();
+            log(`Final balances - Cash: €${balances.cash.toFixed(2)}, Bank: €${balances.bank.toFixed(2)}`, 'success');
+            
+            // Check the final distribution
+            const updatedExpenses = await TransactionService.getList({ type: 'expense', limit: 1000 });
+            const finalCashExpenses = updatedExpenses.filter(e => e.account === 'cash').length;
+            const finalBankExpenses = updatedExpenses.filter(e => e.account === 'bank').length;
+            
+            log(`Final account distribution: Cash account: ${finalCashExpenses}, Bank account: ${finalBankExpenses}`, 'success');
+            log('=== FIX COMPLETE ===', 'success');
+            
+        } catch (error) {
+            log(`Error in comprehensive fix: ${error.message}`, 'error');
+        }
+    }
+
+    // Initialize on load
+    window.addEventListener('load', async () => {
+        log('Seed tool ready. Waiting for authentication...', 'info');
+        
+        // Wait for auth
+        setTimeout(async () => {
+            const user = firebase.auth().currentUser;
+            if (user) {
+                log(`Authenticated as ${user.email || 'test user'}`, 'success');
+            } else {
+                log('Not authenticated - using test mode', 'warning');
+            }
+        }, 1000);
+    });
+    </script>
+</body>
+</html>

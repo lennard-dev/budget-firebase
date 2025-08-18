@@ -1,0 +1,39 @@
+<div id="payment-modal" class="modal">
+  <div class="modal-content" style="max-width:420px;">
+    <div class="modal-header"><h2 id="payment-modal-title">Add Payment Method</h2><button class="btn btn-icon" onclick="closeModal('payment-modal')"><span style="font-size:1.5rem;">×</span></button></div>
+    <div class="modal-body">
+      <form id="payment-form">
+        <input type="hidden" id="pm-id" />
+        <div class="form-group"><label class="form-label">Method Name*</label><input type="text" id="pm-name" class="form-control" required /></div>
+        <div class="form-group"><label class="form-label">Sort Order</label><input type="number" id="pm-sort" class="form-control" value="999" /></div>
+        <div class="form-group"><label class="form-label"><input type="checkbox" id="pm-active" checked /> Active</label></div>
+      </form>
+    </div>
+    <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('payment-modal')">Cancel</button><button class="btn btn-primary" onclick="savePaymentModal()">Save Method</button></div>
+  </div>
+</div>
+<script>
+(function(){
+  window.openPaymentModal = function(pm){
+    document.getElementById('payment-modal-title').textContent = pm && pm.id ? 'Edit Payment Method' : 'Add Payment Method';
+    document.getElementById('pm-id').value = pm?.id || '';
+    document.getElementById('pm-name').value = pm?.name || '';
+    document.getElementById('pm-sort').value = pm?.sortOrder ?? 999;
+    document.getElementById('pm-active').checked = pm?.active !== false;
+    document.getElementById('payment-modal').style.display='block';
+  }
+  window.savePaymentModal = async function(){
+    const body = {
+      id: document.getElementById('pm-id').value || undefined,
+      name: document.getElementById('pm-name').value.trim(),
+      sortOrder: Number(document.getElementById('pm-sort').value)||999,
+      active: document.getElementById('pm-active').checked
+    };
+    if (!body.name){ alert('Please provide a name'); return; }
+    await window.callApi('/paymentMethods',{method:'POST', body: JSON.stringify(body)});
+    closeModal('payment-modal');
+    if (window.initializeSettingsPage){ window.initializeSettingsPage(); }
+  }
+})();
+</script>
+

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Expenses</title>
+    <link rel="stylesheet" href="/shared.css" />
+    <script defer src="/__/firebase/12.1.0/firebase-app-compat.js"></script>
+    <script defer src="/__/firebase/12.1.0/firebase-auth-compat.js"></script>
+    <script defer src="/__/firebase/12.1.0/firebase-firestore-compat.js"></script>
+    <script defer src="/__/firebase/12.1.0/firebase-functions-compat.js"></script>
+    <script defer src="/__/firebase/init.js"></script>
+    <script defer src="/app.js"></script>
+  </head>
+  <body class="app-container" id="expenses-page">
+    <div class="nav-header">
+      <div class="nav-brand"><h1>Paréa Lesvos Budget Management</h1></div>
+      <nav class="nav-menu">
+        <a href="/index.html" class="nav-link" data-page="dashboard"><span class="nav-icon">📊</span><span class="nav-text">Dashboard</span></a>
+        <a href="/expenses.html" class="nav-link active" data-page="expenses"><span class="nav-icon">💰</span><span class="nav-text">Expenses</span></a>
+        <a href="/budgets.html" class="nav-link" data-page="budget"><span class="nav-icon">📈</span><span class="nav-text">Budgets</span></a>
+        <a href="/cash-banking.html" class="nav-link" data-page="cash-banking"><span class="nav-icon">🏦</span><span class="nav-text">Cash & Banking</span></a>
+        <a href="/settings.html" class="nav-link" data-page="settings"><span class="nav-icon">⚙️</span><span class="nav-text">Settings</span></a>
+        <button id="signout" class="btn btn-secondary" style="margin-left:12px;">Sign out</button>
+      </nav>
+    </div>
+    <div class="content-area">
+      <div class="page-header">
+        <h2 class="page-title">Expenses</h2>
+        <div class="page-actions">
+          <button class="btn btn-primary" id="add">➕ Add Expense</button>
+          <a class="btn btn-secondary" href="/index.html">Home</a>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-body">
+          <div class="filter-row-top">
+            <div class="filter-item">
+              <label class="form-label">Start Date</label>
+              <input type="date" id="start" class="form-control" />
+            </div>
+            <div class="filter-item">
+              <label class="form-label">End Date</label>
+              <input type="date" id="end" class="form-control" />
+            </div>
+            <div class="filter-item">
+              <label class="form-label">&nbsp;</label>
+              <button class="btn btn-secondary" id="load">Load</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Receipt</th>
+                <th>Category</th>
+                <th>Subcategory</th>
+                <th>Description</th>
+                <th class="text-right">Amount</th>
+                <th>Payment</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="modalTitle">Add Expense</h2>
+          <button class="btn btn-icon" id="m_cancel_top"><span style="font-size:1.5rem;">×</span></button>
+        </div>
+        <div class="modal-body">
+          <form id="expense-form">
+            <div class="grid grid-2">
+              <div class="form-group">
+                <label class="form-label">Date</label>
+                <input type="date" id="m_date" class="form-control" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Amount</label>
+                <input type="number" step="0.01" id="m_amount" class="form-control" />
+              </div>
+            </div>
+            <div class="grid grid-2">
+              <div class="form-group">
+                <label class="form-label">Category</label>
+                <input type="text" id="m_category" placeholder="Other" class="form-control" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Subcategory</label>
+                <input type="text" id="m_subcategory" placeholder="General" class="form-control" />
+              </div>
+            </div>
+            <div class="grid grid-2">
+              <div class="form-group">
+                <label class="form-label">Payment</label>
+                <input type="text" id="m_payment" placeholder="Bank Transfer" class="form-control" />
+              </div>
+              <div class="form-group" style="grid-column:1 / -1;">
+                <label class="form-label">Description</label>
+                <input type="text" id="m_desc" class="form-control" />
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="m_cancel">Cancel</button>
+          <button class="btn btn-primary" id="m_save">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function openModal() { document.getElementById('modal').style.display = 'block'; }
+      function closeModal() { document.getElementById('modal').style.display = 'none'; }
+      async function loadExpenses() {
+        const start = document.getElementById('start').value;
+        const end = document.getElementById('end').value;
+        const params = new URLSearchParams();
+        if (start) params.set('startDate', start);
+        if (end) params.set('endDate', end);
+        const res = await window.callApi(`/expenses?${params.toString()}`);
+        const tbody = document.getElementById('tbody');
+        tbody.innerHTML = '';
+        res.data.forEach(exp => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${exp.date}</td>
+            <td><code>${exp.receiptId || ''}</code></td>
+            <td>${exp.category || ''}</td>
+            <td>${exp.subcategory || ''}</td>
+            <td>${(exp.description||'').replace(/</g,'&lt;')}</td>
+            <td class="text-right"><strong>€${(exp.amount||0).toFixed(2)}</strong></td>
+            <td>${exp.paymentMethod || ''}</td>
+            <td><button class="btn btn-sm btn-danger del" data-id="${exp.id}">Delete</button></td>
+          `;
+          tbody.appendChild(tr);
+        });
+        document.querySelectorAll('.del').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const id = e.currentTarget.getAttribute('data-id');
+            if (!confirm('Delete expense?')) return;
+            await window.callApi(`/expenses/${id}`, { method: 'DELETE' });
+            await loadExpenses();
+          });
+        });
+      }
+
+      document.getElementById('load').addEventListener('click', loadExpenses);
+      document.getElementById('add').addEventListener('click', () => {
+        const today = new Date().toISOString().slice(0,10);
+        document.getElementById('m_date').value = today;
+        document.getElementById('m_amount').value = '';
+        document.getElementById('m_category').value = 'Other';
+        document.getElementById('m_subcategory').value = 'General';
+        document.getElementById('m_payment').value = 'Bank Transfer';
+        document.getElementById('m_desc').value = '';
+        openModal();
+      });
+      document.getElementById('m_cancel').addEventListener('click', closeModal);
+      document.getElementById('m_cancel_top').addEventListener('click', closeModal);
+      document.getElementById('m_save').addEventListener('click', async () => {
+        await window.callApi('/expenses', {
+          method: 'POST',
+          body: JSON.stringify({
+            date: document.getElementById('m_date').value,
+            amount: Number(document.getElementById('m_amount').value)||0,
+            category: document.getElementById('m_category').value||'Other',
+            subcategory: document.getElementById('m_subcategory').value||'General',
+            paymentMethod: document.getElementById('m_payment').value||'Bank Transfer',
+            description: document.getElementById('m_desc').value||''
+          })
+        });
+        closeModal();
+        await loadExpenses();
+      });
+
+      document.addEventListener('DOMContentLoaded', () => {
+        const auth = firebase.auth();
+        auth.onAuthStateChanged((u) => { if (u) loadExpenses(); });
+      });
+    </script>
+  </body>
+  </html>
+
+

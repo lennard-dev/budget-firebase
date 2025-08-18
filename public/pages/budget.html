@@ -1,0 +1,1678 @@
+<div class="content-area">
+  <div class="page-header">
+    <h2 class="page-title">Budget</h2>
+    <div class="page-actions">
+      <button class="btn btn-secondary btn-sm" id="b-prev">← Previous</button>
+      <select id="b-month" class="form-control" style="width:220px;"></select>
+      <button class="btn btn-secondary btn-sm" id="b-next">Next →</button>
+      <button class="btn btn-primary" id="b-edit">⚙️ Set Budget</button>
+    </div>
+  </div>
+  
+  <!-- Enhanced Summary Cards -->
+  <div class="budget-summary-row">
+    <div class="card">
+      <div class="summary-label">Total Budget</div>
+      <div id="b-sum-budget" class="summary-value">€0.00</div>
+      <small id="b-budget-trend" class="summary-trend"></small>
+    </div>
+    <div class="card">
+      <div class="summary-label">Total Spent</div>
+      <div id="b-sum-spent" class="summary-value text-danger">€0.00</div>
+      <div class="progress-bar" style="height:4px;background:#e2e8f0;border-radius:2px;margin-top:4px;">
+        <div id="b-spent-progress" style="height:100%;background:var(--color-primary);border-radius:2px;transition:width 0.3s;width:0;"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="summary-label">Remaining</div>
+      <div id="b-sum-rem" class="summary-value text-success">€0.00</div>
+      <small id="b-remaining-days" class="summary-trend"></small>
+    </div>
+    <div class="card">
+      <div class="summary-label">% Used</div>
+      <div id="b-sum-pct" class="summary-value">0%</div>
+      <small id="b-usage-status" class="summary-trend"></small>
+    </div>
+  </div>
+
+  <!-- Tab Navigation (Positioned between summary cards and budget table) -->
+  <div class="tab-nav-container">
+    <div class="tab-nav">
+      <button class="tab-nav-button active" data-tab="current-month">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="16" y1="2" x2="16" y2="6"></line>
+          <line x1="8" y1="2" x2="8" y2="6"></line>
+          <line x1="3" y1="10" x2="21" y2="10"></line>
+        </svg>
+        Current Month
+      </button>
+      <button class="tab-nav-button" data-tab="year-to-date">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 10H3"></path>
+          <path d="M21 6H3"></path>
+          <path d="M21 14H3"></path>
+          <path d="M21 18H3"></path>
+        </svg>
+        Year to Date
+      </button>
+      <button class="tab-nav-button" data-tab="current-year">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="20" x2="12" y2="10"></line>
+          <line x1="18" y1="20" x2="18" y2="4"></line>
+          <line x1="6" y1="20" x2="6" y2="16"></line>
+        </svg>
+        Current Year
+      </button>
+    </div>
+  </div>
+
+  <!-- Tab Content: Current Month -->
+  <div class="tab-panel active" id="tab-current-month">
+    <div class="card">
+      <div class="action-bar">
+        <button class="btn btn-sm btn-outline" onclick="toggleAllSubcategories()" id="toggle-all">Expand All</button>
+        <button class="btn btn-sm btn-outline" onclick="exportCurrentMonth()">Export</button>
+      </div>
+      <div class="card-body">
+        <table class="budget-table">
+          <thead>
+            <tr>
+              <th style="width:300px;">Category</th>
+              <th class="text-right" style="width:120px;">Budget</th>
+              <th class="text-right" style="width:120px;">Spent</th>
+              <th class="text-right" style="width:120px;">Remaining</th>
+              <th class="text-center" style="width:80px;">% Used</th>
+              <th style="width:200px;">Progress</th>
+              <th class="text-center" style="width:80px;">Status</th>
+            </tr>
+          </thead>
+          <tbody id="b-body">
+            <tr><td colspan="7" class="text-center text-muted">Loading budget data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Tab Content: Year to Date -->
+  <div class="tab-panel" id="tab-year-to-date">
+    <div class="card">
+      <div class="action-bar">
+        <button class="btn btn-sm btn-outline" id="ytd-toggle-view">Toggle View: Actuals</button>
+        <button class="btn btn-sm btn-outline" id="ytd-toggle-colors">Toggle Colors</button>
+        <button class="btn btn-sm btn-outline" id="ytd-toggle-expand">Expand All</button>
+        <button class="btn btn-sm btn-outline" onclick="exportYearToDate()">Export</button>
+      </div>
+      <div class="card-body">
+        <div class="ytd-table-container">
+          <table class="ytd-table" id="ytd-table">
+            <thead id="ytd-header">
+              <!-- Month headers will be generated dynamically -->
+            </thead>
+            <tbody id="ytd-body">
+              <!-- YTD data will be generated dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Tab Content: Current Year -->
+  <div class="tab-panel" id="tab-current-year">
+    <div class="card">
+      <div class="action-bar">
+        <button class="btn btn-sm btn-outline" id="cy-toggle-view">Toggle View: Actuals</button>
+        <button class="btn btn-sm btn-outline" id="cy-toggle-colors">Toggle Colors</button>
+        <button class="btn btn-sm btn-outline" id="cy-toggle-expand">Expand All</button>
+        <button class="btn btn-sm btn-outline" onclick="exportCurrentYear()">Export</button>
+      </div>
+      <div class="card-body">
+        <div class="ytd-table-container">
+          <table class="ytd-table" id="cy-table">
+            <thead id="cy-header">
+              <!-- Month headers will be generated dynamically -->
+            </thead>
+            <tbody id="cy-body">
+              <!-- Current Year data will be generated dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Budget Settings Modal -->
+<div id="budgetModal" class="modal">
+  <div class="modal-content" style="max-width:900px;">
+    <div class="modal-header">
+      <h2>Set Monthly Budget</h2>
+      <button class="modal-close" id="bm-close-top">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Total Monthly Budget (€)</label>
+        <input type="number" id="bm-total" class="form-control" step="50" min="0" />
+      </div>
+      <div id="bm-rows"></div>
+      <div class="mt-2"><strong>Total Allocated: <span id="bm-allocated">€0.00</span></strong></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="bm-close">Cancel</button>
+      <button class="btn btn-primary" id="bm-save">Save Budget</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.budget-summary-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.summary-label {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.summary-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.summary-trend {
+  color: #64748b;
+  font-size: 12px;
+}
+
+/* Tab Navigation Style (matching sidebar) */
+.tab-nav-container {
+  margin: 20px 0;
+  background: #f8fafc; /* Same as sidebar background */
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.tab-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.tab-nav-button {
+  flex: 1;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #374151; /* Same as sidebar text */
+  cursor: pointer;
+  font-weight: 500; /* Same as sidebar */
+  font-size: 15px; /* Same as sidebar */
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.tab-nav-button:hover {
+  background: #e5e7eb; /* Same as sidebar hover */
+  color: #1f2937;
+}
+
+.tab-nav-button.active {
+  background: #dbeafe; /* Same as sidebar active */
+  color: var(--color-primary);
+  box-shadow: none;
+}
+
+.tab-icon {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2;
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+/* Action Bar for cards */
+.action-bar {
+  background: #f8fafc;
+  padding: 8px 12px;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.card .action-bar {
+  margin: -16px -16px 0 -16px;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+
+/* Year to Date Table Styles */
+.ytd-table-container {
+  overflow-x: auto;
+  margin: -20px;
+  padding: 20px;
+}
+
+.ytd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.ytd-table th,
+.ytd-table td {
+  padding: 12px 8px;
+  border-bottom: 1px solid #e2e8f0;
+  border-right: 1px solid #f1f5f9;
+  text-align: right;
+  vertical-align: middle;
+  font-family: inherit;
+}
+
+.ytd-table td:last-child,
+.ytd-table th:last-child {
+  border-right: none;
+}
+
+.ytd-table th:first-child,
+.ytd-table td:first-child {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  background: white;
+  z-index: 10;
+  min-width: 200px;
+  font-weight: 500;
+  box-shadow: 2px 0 4px rgba(0,0,0,0.05);
+  border-right: 2px solid #e2e8f0;
+}
+
+/* Emphasize dividers between date and category columns */
+.ytd-table td:nth-last-child(4),
+.ytd-table th:nth-last-child(4) {
+  border-right: 2px solid #e2e8f0;
+}
+
+/* Emphasize divider between YTD Actual and YTD Budget columns */
+.ytd-table td:nth-last-child(2),
+.ytd-table th:nth-last-child(2) {
+  border-right: 2px solid #e2e8f0;
+}
+
+.ytd-table thead th {
+  background: transparent;
+  font-weight: 500;
+  font-size: 13px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  border-bottom: 1px solid #e5e7eb;
+  position: sticky;
+  top: 0;
+  z-index: 11;
+}
+
+.ytd-table thead th:first-child {
+  z-index: 12;
+}
+
+.ytd-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.category-row {
+  cursor: pointer;
+}
+
+.category-row td:first-child::before {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 5px solid #64748b;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  margin-right: 8px;
+  transition: transform 0.2s;
+}
+
+.category-row.expanded td:first-child::before {
+  transform: rotate(90deg);
+}
+
+.subcategory-row {
+  display: none;
+}
+
+.subcategory-row.visible {
+  display: table-row;
+}
+
+.subcategory-row td:first-child {
+  padding-left: 32px;
+  font-weight: 400;
+  color: #64748b;
+}
+
+.ytd-actual {
+  color: #1f2937;
+  font-weight: 500;
+  font-family: inherit;
+}
+
+.ytd-budget {
+  color: #64748b;
+  font-size: 11px;
+  display: none;
+  font-family: inherit;
+}
+
+.ytd-budget.visible {
+  display: block;
+}
+
+.ytd-cell {
+  position: relative;
+}
+
+.over-budget {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.under-budget {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.colors-enabled .over-budget {
+  background: #fee2e2;
+}
+
+.colors-enabled .under-budget {
+  background: #dcfce7;
+}
+
+/* Budget Table Styles */
+.budget-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.budget-table th,
+.budget-table td {
+  padding: 12px 8px;
+  border-bottom: 1px solid #e2e8f0;
+  vertical-align: middle;
+}
+
+.budget-table th {
+  background: transparent;
+  font-weight: 500;
+  font-size: 13px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* Budget page specific category styles with triangles */
+#tab-current-month .category-name {
+  font-weight: 500;
+  color: var(--color-primary);
+  cursor: pointer;
+  position: relative;
+}
+
+#tab-current-month .category-name:hover {
+  color: var(--color-primary-dark);
+}
+
+#tab-current-month .category-name::before {
+  content: '' !important;
+  display: inline-block !important;
+  width: 0 !important;
+  height: 0 !important;
+  border-left: 5px solid #64748b !important;
+  border-top: 4px solid transparent !important;
+  border-bottom: 4px solid transparent !important;
+  margin-right: 8px !important;
+  transition: transform 0.2s !important;
+}
+
+#tab-current-month .category-name.expanded::before {
+  transform: rotate(90deg) !important;
+}
+
+.subcategory-name {
+  padding-left: 32px;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.progress-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-bar {
+  position: relative;
+  overflow: hidden;
+}
+
+.budget-progress {
+  flex: 1;
+  height: 20px;
+  background: #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.budget-progress-fill {
+  height: 100%;
+  transition: width 0.3s, background-color 0.3s;
+  border-radius: 10px;
+  position: relative;
+}
+
+.progress-text {
+  font-size: 11px;
+  font-weight: 500;
+  min-width: 35px;
+  text-align: center;
+}
+
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.status-on-track { background: #dcfce7; color: #166534; }
+.status-warning { background: #fef3c7; color: #92400e; }
+.status-over { background: #fee2e2; color: #991b1b; }
+.status-under { background: #dbeafe; color: #1e40af; }
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* Modal Styles */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+}
+
+.modal-content {
+  background-color: white;
+  margin: 5% auto;
+  padding: 0;
+  border: none;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 900px;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  max-height: calc(90vh - 160px);
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 20px 24px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+}
+
+.modal-close:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.budget-category-allocation {
+  border: 1px solid #e2e8f0;
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.bm-cat, .bm-sub {
+  margin-bottom: 8px;
+}
+
+@media (max-width: 768px) {
+  .budget-summary-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .budget-table {
+    font-size: 14px;
+  }
+  
+  .budget-table th,
+  .budget-table td {
+    padding: 8px 4px;
+  }
+  
+  .tab-nav-button {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+  
+  .tab-icon {
+    width: 16px;
+    height: 16px;
+  }
+  
+  .action-bar {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .action-bar .btn {
+    flex: 1;
+    min-width: 100px;
+  }
+}
+</style>
+
+<script>
+(function(){
+  let currentBudgetData = null;
+  let allSubcategoriesExpanded = false;
+  let ytdViewState = 0; // 0: Actuals only, 1: Actuals vs Budget, 2: Budget only
+  let ytdColorsEnabled = false;
+  let ytdExpanded = false;
+  let cyViewState = 0; // 0: Actuals only, 1: Actuals vs Budget, 2: Budget only
+  let cyColorsEnabled = false;
+  let cyExpanded = false;
+  
+  function fmt(n) {
+    return new Intl.NumberFormat('en-US',{style:'currency',currency:'EUR'}).format(Number(n)||0);
+  }
+  
+  function formatPercent(value) {
+    return `${(value || 0).toFixed(1)}%`;
+  }
+  
+  function setMonthSelect(sel) {
+    sel.innerHTML = '';
+    const now = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const y = d.getFullYear();
+      const m = d.getMonth() + 1;
+      const o = document.createElement('option');
+      o.value = `${y}-${String(m).padStart(2,'0')}`;
+      o.textContent = `${d.toLocaleString('en', {month:'long'})} ${y}`;
+      sel.appendChild(o);
+    }
+    sel.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  }
+  
+  function getBudgetStatus(spent, budgeted) {
+    if (!budgeted || budgeted === 0) return 'neutral';
+    const percentage = (spent / budgeted) * 100;
+    
+    if (percentage > 100) return 'over';
+    if (percentage > 80) return 'warning';
+    if (percentage < 50) return 'under';
+    return 'on-track';
+  }
+  
+  function getBudgetStatusText(spent, budgeted) {
+    const status = getBudgetStatus(spent, budgeted);
+    switch (status) {
+      case 'over': return 'Over Budget';
+      case 'warning': return 'Near Limit';
+      case 'under': return 'Under-utilized';
+      case 'on-track': return 'On Track';
+      default: return 'No Budget';
+    }
+  }
+  
+  function getProgressColor(spent, budgeted) {
+    const status = getBudgetStatus(spent, budgeted);
+    switch (status) {
+      case 'over': return '#dc2626';
+      case 'warning': return '#f59e0b';
+      case 'under': return '#3b82f6';
+      case 'on-track': return '#059669';
+      default: return '#6b7280';
+    }
+  }
+  
+  function renderProgressBar(spent, budgeted) {
+    const percentage = budgeted > 0 ? Math.min((spent / budgeted) * 100, 100) : 0;
+    const color = getProgressColor(spent, budgeted);
+    
+    return `
+      <div class="progress-container">
+        <div class="budget-progress">
+          <div class="budget-progress-fill" style="width: ${percentage}%; background-color: ${color};"></div>
+        </div>
+        <span class="progress-text">${formatPercent(percentage)}</span>
+      </div>
+    `;
+  }
+  
+  // Make globally accessible for onclick handlers
+  window.toggleSubcategories = function(categoryName) {
+    const categoryRow = document.querySelector(`.category-name[data-category="${categoryName}"]`);
+    const subcategoryRows = document.querySelectorAll(`.subcategory-row[data-parent="${categoryName}"]`);
+    
+    const isExpanded = categoryRow.classList.contains('expanded');
+    
+    if (isExpanded) {
+      categoryRow.classList.remove('expanded');
+      subcategoryRows.forEach(row => row.classList.remove('visible'));
+    } else {
+      categoryRow.classList.add('expanded');
+      subcategoryRows.forEach(row => row.classList.add('visible'));
+    }
+  }
+  
+  window.toggleYtdCategory = function(categoryName) {
+    const categoryRow = document.querySelector(`.category-row[data-category="${categoryName}"]`);
+    const subcategoryRows = document.querySelectorAll(`.ytd-subcategory[data-parent="${categoryName}"]`);
+    
+    const isExpanded = categoryRow.classList.contains('expanded');
+    
+    if (isExpanded) {
+      categoryRow.classList.remove('expanded');
+      subcategoryRows.forEach(row => row.classList.remove('visible'));
+    } else {
+      categoryRow.classList.add('expanded');
+      subcategoryRows.forEach(row => row.classList.add('visible'));
+    }
+  }
+  
+  window.toggleAllSubcategories = function() {
+    const toggleBtn = document.getElementById('toggle-all');
+    const categoryNames = document.querySelectorAll('.category-name');
+    
+    if (allSubcategoriesExpanded) {
+      // Collapse all
+      categoryNames.forEach(category => {
+        category.classList.remove('expanded');
+      });
+      document.querySelectorAll('.subcategory-row').forEach(row => {
+        row.classList.remove('visible');
+      });
+      toggleBtn.innerHTML = 'Expand All';
+      allSubcategoriesExpanded = false;
+    } else {
+      // Expand all
+      categoryNames.forEach(category => {
+        category.classList.add('expanded');
+      });
+      document.querySelectorAll('.subcategory-row').forEach(row => {
+        row.classList.add('visible');
+      });
+      toggleBtn.innerHTML = 'Collapse All';
+      allSubcategoriesExpanded = true;
+    }
+  }
+  
+  function calculateTrends(currentData) {
+    // This would compare with previous period - placeholder for now
+    const trendTexts = {
+      budget: 'Same as last month',
+      remaining: `${Math.ceil(Math.random() * 20)} days left in period`,
+      usage: currentData.totalSpent > (currentData.totalBudget * 0.8) ? 'High usage rate' : 'Normal usage'
+    };
+    
+    return trendTexts;
+  }
+  
+  async function load() {
+    const monthValue = document.getElementById('b-month').value;
+    const [year, month] = monthValue.split('-');
+    
+    try {
+      const response = await window.callApi(`/budgets?year=${year}&month=${month}`);
+      currentBudgetData = response.data || {totalBudget: 0, totalSpent: 0, categoriesGrouped: {}};
+      
+      // Update summary cards
+      const totalBudget = currentBudgetData.totalBudget || 0;
+      const totalSpent = currentBudgetData.totalSpent || 0;
+      const remaining = totalBudget - totalSpent;
+      const percentUsed = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
+      
+      document.getElementById('b-sum-budget').textContent = fmt(totalBudget);
+      document.getElementById('b-sum-spent').textContent = fmt(totalSpent);
+      document.getElementById('b-sum-rem').textContent = fmt(remaining);
+      document.getElementById('b-sum-pct').textContent = formatPercent(percentUsed);
+      
+      // Update progress bar in spent card
+      const spentProgress = document.getElementById('b-spent-progress');
+      spentProgress.style.width = Math.min(percentUsed, 100) + '%';
+      spentProgress.style.background = getProgressColor(totalSpent, totalBudget);
+      
+      // Update trend information
+      const trends = calculateTrends(currentBudgetData);
+      document.getElementById('b-budget-trend').textContent = trends.budget;
+      document.getElementById('b-remaining-days').textContent = trends.remaining;
+      document.getElementById('b-usage-status').textContent = trends.usage;
+      
+      // Update summary card colors based on status
+      const remainingEl = document.getElementById('b-sum-rem');
+      remainingEl.className = `summary-value ${remaining < 0 ? 'text-danger' : remaining < totalBudget * 0.2 ? 'text-warning' : 'text-success'}`;
+      
+      const pctEl = document.getElementById('b-sum-pct');
+      pctEl.className = `summary-value ${percentUsed > 100 ? 'text-danger' : percentUsed > 80 ? 'text-warning' : 'text-primary'}`;
+      
+      // Render budget table
+      const tbody = document.getElementById('b-body');
+      tbody.innerHTML = '';
+      
+      const categories = Object.entries(currentBudgetData.categoriesGrouped || {})
+        .sort((a, b) => a[0].localeCompare(b[0]));
+      
+      if (categories.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No budget data for this period</td></tr>';
+        return;
+      }
+      
+      categories.forEach(([categoryName, categoryData]) => {
+        const spent = Number(categoryData.spent) || 0;
+        const budgeted = Number(categoryData.total) || 0;
+        const remaining = budgeted - spent;
+        const percentage = budgeted > 0 ? (spent / budgeted) * 100 : 0;
+        const status = getBudgetStatus(spent, budgeted);
+        const statusText = getBudgetStatusText(spent, budgeted);
+        
+        // Main category row
+        const categoryRow = document.createElement('tr');
+        categoryRow.innerHTML = `
+          <td class="category-name" data-category="${categoryName}" onclick="toggleSubcategories('${categoryName}')">
+            ${categoryName}
+          </td>
+          <td class="text-right">${fmt(budgeted)}</td>
+          <td class="text-right ${spent > budgeted ? 'text-danger' : ''}">${fmt(spent)}</td>
+          <td class="text-right ${remaining < 0 ? 'text-danger' : 'text-success'}">${fmt(remaining)}</td>
+          <td class="text-center">${formatPercent(percentage)}</td>
+          <td>${renderProgressBar(spent, budgeted)}</td>
+          <td class="text-center"><span class="status-badge status-${status}">${statusText}</span></td>
+        `;
+        tbody.appendChild(categoryRow);
+        
+        // Subcategory rows
+        (categoryData.subcategories || []).forEach(subcategory => {
+          const subSpent = Number(subcategory.spent) || 0;
+          const subBudgeted = Number(subcategory.budgeted) || 0;
+          const subRemaining = subBudgeted - subSpent;
+          const subPercentage = subBudgeted > 0 ? (subSpent / subBudgeted) * 100 : 0;
+          const subStatus = getBudgetStatus(subSpent, subBudgeted);
+          const subStatusText = getBudgetStatusText(subSpent, subBudgeted);
+          
+          const subcategoryRow = document.createElement('tr');
+          subcategoryRow.className = `subcategory-row`;
+          subcategoryRow.setAttribute('data-parent', categoryName);
+          subcategoryRow.innerHTML = `
+            <td class="subcategory-name">${subcategory.subcategory}</td>
+            <td class="text-right">${fmt(subBudgeted)}</td>
+            <td class="text-right ${subSpent > subBudgeted ? 'text-danger' : ''}">${fmt(subSpent)}</td>
+            <td class="text-right ${subRemaining < 0 ? 'text-danger' : 'text-success'}">${fmt(subRemaining)}</td>
+            <td class="text-center">${formatPercent(subPercentage)}</td>
+            <td>${renderProgressBar(subSpent, subBudgeted)}</td>
+            <td class="text-center"><span class="status-badge status-${subStatus}">${subStatusText}</span></td>
+          `;
+          tbody.appendChild(subcategoryRow);
+        });
+      });
+      
+    } catch (error) {
+      console.error('Failed to load budget data:', error);
+      document.getElementById('b-body').innerHTML = 
+        '<tr><td colspan="7" class="text-center text-danger">Failed to load budget data</td></tr>';
+    }
+  }
+  
+  function renderMonthCell(spent, budget, viewState, colorsEnabled) {
+    // viewState: 0 = Actuals only, 1 = Actuals vs Budget, 2 = Budget only
+    let cellClass = '';
+    let content = '';
+    
+    if (viewState === 0) {
+      // Actuals only
+      content = `<div class="ytd-actual">${spent > 0 ? fmt(spent) : '-'}</div>`;
+      if (colorsEnabled && budget > 0) {
+        cellClass = spent > budget ? 'over-budget' : spent < budget * 0.8 ? 'under-budget' : '';
+      }
+    } else if (viewState === 1) {
+      // Actuals vs Budget
+      content = `
+        <div class="ytd-actual">${spent > 0 ? fmt(spent) : '-'}</div>
+        <div class="ytd-budget visible">${budget > 0 ? fmt(budget) : '-'}</div>
+      `;
+      if (colorsEnabled && budget > 0) {
+        cellClass = spent > budget ? 'over-budget' : spent < budget * 0.8 ? 'under-budget' : '';
+      }
+    } else {
+      // Budget only
+      content = `<div class="ytd-actual">${budget > 0 ? fmt(budget) : '-'}</div>`;
+    }
+    
+    return `<td class="ytd-cell ${cellClass}">${content}</td>`;
+  }
+  
+  async function loadYearToDate() {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    
+    // Show loading state
+    const tbody = document.getElementById('ytd-body');
+    tbody.innerHTML = '<tr><td colspan="20" class="text-center text-muted">Loading Year to Date data...</td></tr>';
+    
+    // Get months from January to current month
+    const months = [];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    for (let m = 1; m <= currentMonth; m++) {
+      months.push({
+        month: m,
+        name: monthNames[m - 1],
+        year: currentYear
+      });
+    }
+    
+    // Build header
+    const header = document.getElementById('ytd-header');
+    header.innerHTML = `
+      <tr>
+        <th>Category</th>
+        ${months.map(m => `<th>${m.name}</th>`).join('')}
+        <th>YTD Actual</th>
+        <th>YTD Budget</th>
+        <th>Var%</th>
+      </tr>
+    `;
+    
+    // Fetch data for each month in parallel
+    const monthlyData = {};
+    const ytdTotals = {};
+    
+    try {
+      // Fetch all months in parallel for better performance
+      const promises = months.map(m => 
+        window.callApi(`/budgets?year=${m.year}&month=${m.month}`)
+          .then(response => ({ key: `${m.year}-${m.month}`, data: response.data || { categoriesGrouped: {} } }))
+      );
+      
+      const results = await Promise.all(promises);
+      
+      // Process results
+      results.forEach(({ key, data }) => {
+        monthlyData[key] = data.categoriesGrouped || {};
+        
+        // Accumulate YTD totals
+        Object.entries(data.categoriesGrouped || {}).forEach(([cat, catData]) => {
+          if (!ytdTotals[cat]) {
+            ytdTotals[cat] = { actual: 0, budget: 0, subcategories: {} };
+          }
+          ytdTotals[cat].actual += Number(catData.spent) || 0;
+          ytdTotals[cat].budget += Number(catData.total) || 0;
+          
+          (catData.subcategories || []).forEach(sub => {
+            const subKey = sub.subcategory;
+            if (!ytdTotals[cat].subcategories[subKey]) {
+              ytdTotals[cat].subcategories[subKey] = { actual: 0, budget: 0 };
+            }
+            ytdTotals[cat].subcategories[subKey].actual += Number(sub.spent) || 0;
+            ytdTotals[cat].subcategories[subKey].budget += Number(sub.budgeted) || 0;
+          });
+        });
+      });
+      
+      // Build table body
+      tbody.innerHTML = '';
+      
+      Object.entries(ytdTotals).sort((a, b) => a[0].localeCompare(b[0])).forEach(([catName, catTotals]) => {
+        const variance = catTotals.budget > 0 ? 
+          ((catTotals.actual - catTotals.budget) / catTotals.budget * 100) : 0;
+        
+        // Category row
+        const catRow = document.createElement('tr');
+        catRow.className = 'category-row';
+        catRow.setAttribute('data-category', catName);
+        catRow.innerHTML = `
+          <td onclick="toggleYtdCategory('${catName}')">
+            <strong>${catName}</strong>
+          </td>
+          ${months.map(m => {
+            const key = `${m.year}-${m.month}`;
+            const monthData = monthlyData[key][catName] || {};
+            const spent = Number(monthData.spent) || 0;
+            const budget = Number(monthData.total) || 0;
+            return renderMonthCell(spent, budget, ytdViewState, ytdColorsEnabled);
+          }).join('')}
+          <td class="ytd-total"><strong>${fmt(catTotals.actual)}</strong></td>
+          <td class="ytd-total">${fmt(catTotals.budget)}</td>
+          <td class="${variance > 0 ? 'text-danger' : variance < -20 ? 'text-success' : 'text-muted'}">${variance.toFixed(1)}%</td>
+        `;
+        tbody.appendChild(catRow);
+        
+        // Subcategory rows
+        Object.entries(catTotals.subcategories).forEach(([subName, subTotals]) => {
+          const subVariance = subTotals.budget > 0 ? 
+            ((subTotals.actual - subTotals.budget) / subTotals.budget * 100) : 0;
+          
+          const subRow = document.createElement('tr');
+          subRow.className = 'subcategory-row ytd-subcategory';
+          subRow.setAttribute('data-parent', catName);
+          subRow.innerHTML = `
+            <td>${subName}</td>
+            ${months.map(m => {
+              const key = `${m.year}-${m.month}`;
+              const catData = monthlyData[key][catName] || {};
+              const subData = (catData.subcategories || []).find(s => s.subcategory === subName) || {};
+              const spent = Number(subData.spent) || 0;
+              const budget = Number(subData.budgeted) || 0;
+              return renderMonthCell(spent, budget, ytdViewState, ytdColorsEnabled);
+            }).join('')}
+            <td>${fmt(subTotals.actual)}</td>
+            <td>${fmt(subTotals.budget)}</td>
+            <td class="${subVariance > 0 ? 'text-danger' : 'text-success'}">${subVariance.toFixed(1)}%</td>
+          `;
+          tbody.appendChild(subRow);
+        });
+      });
+      
+    } catch (error) {
+      console.error('Failed to load YTD data:', error);
+      document.getElementById('ytd-body').innerHTML = 
+        '<tr><td colspan="' + (months.length + 4) + '" class="text-center text-danger">Failed to load YTD data</td></tr>';
+    }
+  }
+  
+  async function loadCurrentYear() {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    
+    // Show loading state
+    const tbody = document.getElementById('cy-body');
+    tbody.innerHTML = '<tr><td colspan="20" class="text-center text-muted">Loading Current Year data...</td></tr>';
+    
+    // Get all 12 months
+    const months = [];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    for (let m = 1; m <= 12; m++) {
+      months.push({
+        month: m,
+        name: monthNames[m - 1],
+        year: currentYear
+      });
+    }
+    
+    // Build header
+    const header = document.getElementById('cy-header');
+    header.innerHTML = `
+      <tr>
+        <th>Category</th>
+        ${months.map(m => `<th>${m.name}</th>`).join('')}
+        <th>Year Total</th>
+        <th>Year Budget</th>
+        <th>Var%</th>
+      </tr>
+    `;
+    
+    // Fetch data for each month in parallel
+    const monthlyData = {};
+    const yearTotals = {};
+    
+    try {
+      // Fetch all months in parallel for better performance
+      const promises = months.map(m => 
+        window.callApi(`/budgets?year=${m.year}&month=${m.month}`)
+          .then(response => ({ key: `${m.year}-${m.month}`, data: response.data || { categoriesGrouped: {} } }))
+      );
+      
+      const results = await Promise.all(promises);
+      
+      // Process results
+      results.forEach(({ key, data }) => {
+        monthlyData[key] = data.categoriesGrouped || {};
+        
+        // Accumulate year totals
+        Object.entries(data.categoriesGrouped || {}).forEach(([cat, catData]) => {
+          if (!yearTotals[cat]) {
+            yearTotals[cat] = { actual: 0, budget: 0, subcategories: {} };
+          }
+          yearTotals[cat].actual += Number(catData.spent) || 0;
+          yearTotals[cat].budget += Number(catData.total) || 0;
+          
+          (catData.subcategories || []).forEach(sub => {
+            const subKey = sub.subcategory;
+            if (!yearTotals[cat].subcategories[subKey]) {
+              yearTotals[cat].subcategories[subKey] = { actual: 0, budget: 0 };
+            }
+            yearTotals[cat].subcategories[subKey].actual += Number(sub.spent) || 0;
+            yearTotals[cat].subcategories[subKey].budget += Number(sub.budgeted) || 0;
+          });
+        });
+      });
+      
+      // Build table body
+      tbody.innerHTML = '';
+      
+      Object.entries(yearTotals).sort((a, b) => a[0].localeCompare(b[0])).forEach(([catName, catTotals]) => {
+        const variance = catTotals.budget > 0 ? 
+          ((catTotals.actual - catTotals.budget) / catTotals.budget * 100) : 0;
+        
+        // Category row
+        const catRow = document.createElement('tr');
+        catRow.className = 'category-row';
+        catRow.setAttribute('data-category', `cy-${catName}`);
+        catRow.innerHTML = `
+          <td onclick="toggleCyCategory('${catName}')">
+            <strong>${catName}</strong>
+          </td>
+          ${months.map(m => {
+            const key = `${m.year}-${m.month}`;
+            const monthData = monthlyData[key][catName] || {};
+            const spent = Number(monthData.spent) || 0;
+            const budget = Number(monthData.total) || 0;
+            return renderMonthCell(spent, budget, cyViewState, cyColorsEnabled);
+          }).join('')}
+          <td class="ytd-total"><strong>${fmt(catTotals.actual)}</strong></td>
+          <td class="ytd-total">${fmt(catTotals.budget)}</td>
+          <td class="${variance > 0 ? 'text-danger' : variance < -20 ? 'text-success' : 'text-muted'}">${variance.toFixed(1)}%</td>
+        `;
+        tbody.appendChild(catRow);
+        
+        // Subcategory rows
+        Object.entries(catTotals.subcategories).forEach(([subName, subTotals]) => {
+          const subVariance = subTotals.budget > 0 ? 
+            ((subTotals.actual - subTotals.budget) / subTotals.budget * 100) : 0;
+          
+          const subRow = document.createElement('tr');
+          subRow.className = 'subcategory-row ytd-subcategory cy-subcategory';
+          subRow.setAttribute('data-parent', `cy-${catName}`);
+          subRow.innerHTML = `
+            <td>${subName}</td>
+            ${months.map(m => {
+              const key = `${m.year}-${m.month}`;
+              const catData = monthlyData[key][catName] || {};
+              const subData = (catData.subcategories || []).find(s => s.subcategory === subName) || {};
+              const spent = Number(subData.spent) || 0;
+              const budget = Number(subData.budgeted) || 0;
+              return renderMonthCell(spent, budget, cyViewState, cyColorsEnabled);
+            }).join('')}
+            <td>${fmt(subTotals.actual)}</td>
+            <td>${fmt(subTotals.budget)}</td>
+            <td class="${subVariance > 0 ? 'text-danger' : 'text-success'}">${subVariance.toFixed(1)}%</td>
+          `;
+          tbody.appendChild(subRow);
+        });
+      });
+      
+    } catch (error) {
+      console.error('Failed to load Current Year data:', error);
+      document.getElementById('cy-body').innerHTML = 
+        '<tr><td colspan="' + (months.length + 4) + '" class="text-center text-danger">Failed to load Current Year data</td></tr>';
+    }
+  }
+  
+  window.toggleCyCategory = function(categoryName) {
+    const categoryRow = document.querySelector(`.category-row[data-category="cy-${categoryName}"]`);
+    const subcategoryRows = document.querySelectorAll(`.cy-subcategory[data-parent="cy-${categoryName}"]`);
+    
+    const isExpanded = categoryRow.classList.contains('expanded');
+    
+    if (isExpanded) {
+      categoryRow.classList.remove('expanded');
+      subcategoryRows.forEach(row => row.classList.remove('visible'));
+    } else {
+      categoryRow.classList.add('expanded');
+      subcategoryRows.forEach(row => row.classList.add('visible'));
+    }
+  }
+  
+  window.initializeBudgetPage = function() {
+    const monthSelect = document.getElementById('b-month');
+    setMonthSelect(monthSelect);
+    
+    // Event listeners
+    monthSelect.addEventListener('change', load);
+    
+    document.getElementById('b-prev').addEventListener('click', () => {
+      if (monthSelect.selectedIndex > 0) {
+        monthSelect.selectedIndex--;
+        monthSelect.dispatchEvent(new Event('change'));
+      }
+    });
+    
+    document.getElementById('b-next').addEventListener('click', () => {
+      if (monthSelect.selectedIndex < monthSelect.options.length - 1) {
+        monthSelect.selectedIndex++;
+        monthSelect.dispatchEvent(new Event('change'));
+      }
+    });
+    
+    // Add event listener for Set Budget button
+    document.getElementById('b-edit').addEventListener('click', () => {
+      openBudgetSettings();
+    });
+    
+    // Tab navigation
+    document.querySelectorAll('.tab-nav-button').forEach(button => {
+      button.addEventListener('click', () => {
+        const tabId = button.getAttribute('data-tab');
+        
+        // Update active tab button
+        document.querySelectorAll('.tab-nav-button').forEach(btn => btn.classList.remove('active'));
+        button.classList.add('active');
+        
+        // Update active tab content
+        document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
+        document.getElementById(`tab-${tabId}`).classList.add('active');
+        
+        // Load data when tabs are selected
+        if (tabId === 'year-to-date') {
+          loadYearToDate();
+        } else if (tabId === 'current-year') {
+          loadCurrentYear();
+        }
+      });
+    });
+    
+    // YTD control buttons
+    document.getElementById('ytd-toggle-view').addEventListener('click', () => {
+      ytdViewState = (ytdViewState + 1) % 3;
+      const btn = document.getElementById('ytd-toggle-view');
+      const stateLabels = ['Actuals', 'Actuals vs. Budget', 'Budget'];
+      btn.innerHTML = `Toggle View: ${stateLabels[ytdViewState]}`;
+      loadYearToDate(); // Reload to apply new view state
+    });
+    
+    document.getElementById('ytd-toggle-colors').addEventListener('click', () => {
+      ytdColorsEnabled = !ytdColorsEnabled;
+      const table = document.getElementById('ytd-table');
+      table.classList.toggle('colors-enabled', ytdColorsEnabled);
+      
+      // Re-render to apply colors
+      if (ytdColorsEnabled) {
+        loadYearToDate();
+      }
+    });
+    
+    document.getElementById('ytd-toggle-expand').addEventListener('click', () => {
+      ytdExpanded = !ytdExpanded;
+      const btn = document.getElementById('ytd-toggle-expand');
+      btn.innerHTML = ytdExpanded ? 'Collapse All' : 'Expand All';
+      
+      document.querySelectorAll('.ytd-subcategory').forEach(row => {
+        row.classList.toggle('visible', ytdExpanded);
+      });
+      
+      // Also toggle the expand state of category rows
+      document.querySelectorAll('.category-row').forEach(row => {
+        row.classList.toggle('expanded', ytdExpanded);
+      });
+    });
+    
+    // Current Year control buttons
+    document.getElementById('cy-toggle-view').addEventListener('click', () => {
+      cyViewState = (cyViewState + 1) % 3;
+      const btn = document.getElementById('cy-toggle-view');
+      const stateLabels = ['Actuals', 'Actuals vs. Budget', 'Budget'];
+      btn.innerHTML = `Toggle View: ${stateLabels[cyViewState]}`;
+      loadCurrentYear(); // Reload to apply new view state
+    });
+    
+    document.getElementById('cy-toggle-colors').addEventListener('click', () => {
+      cyColorsEnabled = !cyColorsEnabled;
+      const table = document.getElementById('cy-table');
+      table.classList.toggle('colors-enabled', cyColorsEnabled);
+      
+      // Re-render to apply colors
+      if (cyColorsEnabled) {
+        loadCurrentYear();
+      }
+    });
+    
+    document.getElementById('cy-toggle-expand').addEventListener('click', () => {
+      cyExpanded = !cyExpanded;
+      const btn = document.getElementById('cy-toggle-expand');
+      btn.innerHTML = cyExpanded ? 'Collapse All' : 'Expand All';
+      
+      document.querySelectorAll('.cy-subcategory').forEach(row => {
+        row.classList.toggle('visible', cyExpanded);
+      });
+      
+      // Also toggle the expand state of category rows
+      document.querySelectorAll('#cy-body .category-row').forEach(row => {
+        row.classList.toggle('expanded', cyExpanded);
+      });
+    });
+    
+    // Setup modal listeners
+    setupModalListeners();
+    
+    // Load initial data
+    load();
+  }
+  
+  // Budget Settings Modal Functions
+  async function openBudgetSettings() {
+    const monthValue = document.getElementById('b-month').value;
+    const [year, month] = monthValue.split('-');
+    
+    try {
+      // Fetch current budget and categories
+      const [budgetRes, categoriesRes] = await Promise.all([
+        window.callApi(`/budgets?year=${year}&month=${month}`),
+        window.callApi('/categories')
+      ]);
+      
+      const budgetData = budgetRes.data || { totalBudget: 0, categoriesGrouped: {} };
+      const categories = (categoriesRes.data || []).sort((a, b) => a.name.localeCompare(b.name));
+      
+      // Set total budget
+      document.getElementById('bm-total').value = Number(budgetData.totalBudget) || 0;
+      
+      // Build category allocation rows
+      const container = document.getElementById('bm-rows');
+      container.innerHTML = '';
+      
+      categories.forEach(cat => {
+        const catData = budgetData.categoriesGrouped[cat.name] || { total: 0, subcategories: [] };
+        const subMap = new Map((catData.subcategories || []).map(s => [s.subcategory, Number(s.budgeted) || 0]));
+        
+        const wrap = document.createElement('div');
+        wrap.className = 'budget-category-allocation';
+        
+        const subs = cat.subcategories || [];
+        let inner = `
+          <div class="grid grid-2 mb-1">
+            <label class="form-label"><strong>${cat.name}</strong></label>
+            <input type="number" class="form-control bm-cat" data-cat="${cat.name}" value="${Number(catData.total) || 0}" step="50" min="0">
+          </div>
+        `;
+        
+        subs.forEach(s => {
+          inner += `
+            <div class="grid grid-2 mb-1">
+              <label class="form-label text-muted" style="padding-left: 20px;">${s}</label>
+              <input type="number" class="form-control bm-sub" data-cat="${cat.name}" data-sub="${s}" value="${subMap.get(s) || 0}" step="10" min="0">
+            </div>
+          `;
+        });
+        
+        wrap.innerHTML = inner;
+        container.appendChild(wrap);
+      });
+      
+      // Add event listeners for allocation inputs
+      document.querySelectorAll('.bm-cat, .bm-sub').forEach(input => {
+        input.addEventListener('input', recomputeAllocated);
+      });
+      
+      recomputeAllocated();
+      
+      // Show modal
+      document.getElementById('budgetModal').style.display = 'block';
+      
+    } catch (error) {
+      console.error('Failed to open budget settings:', error);
+      alert('Failed to load budget settings');
+    }
+  }
+  
+  function closeBudgetModal() {
+    document.getElementById('budgetModal').style.display = 'none';
+  }
+  
+  function recomputeAllocated() {
+    let total = 0;
+    document.querySelectorAll('.bm-cat').forEach(inp => {
+      total += Number(inp.value) || 0;
+    });
+    document.getElementById('bm-allocated').textContent = fmt(total);
+  }
+  
+  async function saveBudget() {
+    const monthValue = document.getElementById('b-month').value;
+    const [year, month] = monthValue.split('-');
+    const totalBudget = Number(document.getElementById('bm-total').value) || 0;
+    const allocations = [];
+    
+    document.querySelectorAll('.bm-cat').forEach(inp => {
+      const cat = inp.dataset.cat;
+      const amount = Number(inp.value) || 0;
+      if (amount > 0) {
+        allocations.push({ category: cat, subcategory: 'All', amount });
+      }
+    });
+    
+    document.querySelectorAll('.bm-sub').forEach(inp => {
+      const cat = inp.dataset.cat;
+      const sub = inp.dataset.sub;
+      const amount = Number(inp.value) || 0;
+      if (amount > 0) {
+        allocations.push({ category: cat, subcategory: sub, amount });
+      }
+    });
+    
+    try {
+      await window.callApi('/budgets', {
+        method: 'POST',
+        body: JSON.stringify({ year: Number(year), month: Number(month), totalBudget, allocations })
+      });
+      
+      closeBudgetModal();
+      await load(); // Reload budget data
+      
+    } catch (error) {
+      console.error('Failed to save budget:', error);
+      alert('Failed to save budget');
+    }
+  }
+  
+  // Set up modal event listeners
+  window.setupModalListeners = function() {
+    const closeTop = document.getElementById('bm-close-top');
+    const closeBtn = document.getElementById('bm-close');
+    const saveBtn = document.getElementById('bm-save');
+    
+    if (closeTop) {
+      closeTop.onclick = closeBudgetModal;
+    }
+    if (closeBtn) {
+      closeBtn.onclick = closeBudgetModal;
+    }
+    if (saveBtn) {
+      saveBtn.onclick = saveBudget;
+    }
+    
+    // Close modal when clicking outside
+    const modal = document.getElementById('budgetModal');
+    if (modal) {
+      modal.onclick = function(event) {
+        if (event.target === modal) {
+          closeBudgetModal();
+        }
+      };
+    }
+  }
+  
+  // Export functions
+  window.exportCurrentMonth = function() {
+    const monthValue = document.getElementById('b-month').value;
+    const [year, month] = monthValue.split('-');
+    const monthName = document.getElementById('b-month').options[document.getElementById('b-month').selectedIndex].text;
+    
+    if (!currentBudgetData) {
+      alert('No data to export');
+      return;
+    }
+    
+    // Create CSV content
+    let csv = `Budget Report - ${monthName}\n\n`;
+    csv += 'Category,Subcategory,Budget,Spent,Remaining,% Used\n';
+    
+    Object.entries(currentBudgetData.categoriesGrouped || {}).forEach(([catName, catData]) => {
+      const spent = Number(catData.spent) || 0;
+      const budgeted = Number(catData.total) || 0;
+      const remaining = budgeted - spent;
+      const percentage = budgeted > 0 ? (spent / budgeted) * 100 : 0;
+      
+      csv += `"${catName}","",${budgeted},${spent},${remaining},${percentage.toFixed(1)}%\n`;
+      
+      (catData.subcategories || []).forEach(sub => {
+        const subSpent = Number(sub.spent) || 0;
+        const subBudgeted = Number(sub.budgeted) || 0;
+        const subRemaining = subBudgeted - subSpent;
+        const subPercentage = subBudgeted > 0 ? (subSpent / subBudgeted) * 100 : 0;
+        
+        csv += `"","${sub.subcategory}",${subBudgeted},${subSpent},${subRemaining},${subPercentage.toFixed(1)}%\n`;
+      });
+    });
+    
+    // Download CSV
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    a.setAttribute('download', `budget_${monthName.replace(' ', '_')}.csv`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+  
+  window.exportCurrentYear = async function() {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    
+    // Create CSV content
+    let csv = `Current Year Budget Report - ${currentYear}\n\n`;
+    csv += 'Category,Subcategory,';
+    
+    // Add month headers
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    for (let m = 0; m < 12; m++) {
+      csv += `${monthNames[m]} Actual,${monthNames[m]} Budget,`;
+    }
+    csv += 'Year Total,Year Budget,Variance %\n';
+    
+    // Get the Current Year table data
+    const rows = document.querySelectorAll('#cy-body tr');
+    
+    rows.forEach(row => {
+      const cells = row.querySelectorAll('td');
+      if (cells.length > 0) {
+        const isSubcategory = row.classList.contains('subcategory-row');
+        const categoryName = cells[0].textContent.trim();
+        
+        if (isSubcategory) {
+          csv += `"","${categoryName}",`;
+        } else {
+          csv += `"${categoryName}","",`;
+        }
+        
+        // Add monthly data
+        for (let i = 1; i < cells.length; i++) {
+          const cellText = cells[i].textContent.trim().replace('€', '').replace(',', '');
+          const value = cellText === '-' ? '0' : cellText;
+          
+          // For monthly cells, extract actual value
+          if (i < cells.length - 3) {
+            const actualDiv = cells[i].querySelector('.ytd-actual');
+            if (actualDiv) {
+              const actualText = actualDiv.textContent.trim().replace('€', '').replace(',', '');
+              csv += actualText === '-' ? '0,' : actualText + ',';
+              // Add budget if visible
+              const budgetDiv = cells[i].querySelector('.ytd-budget');
+              if (budgetDiv && budgetDiv.classList.contains('visible')) {
+                const budgetText = budgetDiv.textContent.trim().replace('€', '').replace(',', '');
+                csv += budgetText === '-' ? '0,' : budgetText + ',';
+              } else {
+                csv += '0,'; // Add placeholder for budget column
+              }
+            } else {
+              csv += value + ',';
+            }
+          } else {
+            // Year totals and variance
+            csv += value;
+            if (i < cells.length - 1) csv += ',';
+          }
+        }
+        csv += '\n';
+      }
+    });
+    
+    // Download CSV
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    a.setAttribute('download', `current_year_budget_${currentYear}.csv`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+  
+  window.exportYearToDate = async function() {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    
+    // Create CSV content
+    let csv = `Year to Date Budget Report - ${currentYear}\n\n`;
+    csv += 'Category,Subcategory,';
+    
+    // Add month headers
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    for (let m = 0; m < currentMonth; m++) {
+      csv += `${monthNames[m]} Actual,${monthNames[m]} Budget,`;
+    }
+    csv += 'YTD Actual,YTD Budget,Variance %\n';
+    
+    // Get the YTD table data
+    const rows = document.querySelectorAll('#ytd-body tr');
+    
+    rows.forEach(row => {
+      const cells = row.querySelectorAll('td');
+      if (cells.length > 0) {
+        const isSubcategory = row.classList.contains('subcategory-row');
+        const categoryName = cells[0].textContent.trim();
+        
+        if (isSubcategory) {
+          csv += `"","${categoryName}",`;
+        } else {
+          csv += `"${categoryName}","",`;
+        }
+        
+        // Add monthly data
+        for (let i = 1; i < cells.length; i++) {
+          const cellText = cells[i].textContent.trim().replace('€', '').replace(',', '');
+          const value = cellText === '-' ? '0' : cellText;
+          
+          // For monthly cells, extract actual value
+          if (i < cells.length - 3) {
+            const actualDiv = cells[i].querySelector('.ytd-actual');
+            if (actualDiv) {
+              const actualText = actualDiv.textContent.trim().replace('€', '').replace(',', '');
+              csv += actualText === '-' ? '0,' : actualText + ',';
+              // Add budget if visible
+              const budgetDiv = cells[i].querySelector('.ytd-budget');
+              if (budgetDiv && budgetDiv.classList.contains('visible')) {
+                const budgetText = budgetDiv.textContent.trim().replace('€', '').replace(',', '');
+                csv += budgetText === '-' ? '0,' : budgetText + ',';
+              } else {
+                csv += '0,'; // Add placeholder for budget column
+              }
+            } else {
+              csv += value + ',';
+            }
+          } else {
+            // YTD totals and variance
+            csv += value;
+            if (i < cells.length - 1) csv += ',';
+          }
+        }
+        csv += '\n';
+      }
+    });
+    
+    // Download CSV
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    a.setAttribute('download', `ytd_budget_${currentYear}.csv`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+  
+  window.registerPageInitializer('budget', window.initializeBudgetPage);
+})();
+</script>

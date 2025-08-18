@@ -1,0 +1,304 @@
+<div class="content-area" id="settings-page">
+  <div class="page-header">
+    <h2 class="page-title">Settings</h2>
+  </div>
+
+  <div class="tab-container">
+    <div class="tab-header">
+      <button class="tab-button active" data-tab="categories">Categories</button>
+      <button class="tab-button" data-tab="donors">Donors</button>
+      <button class="tab-button" data-tab="app-settings">App Settings</button>
+    </div>
+
+    <div id="categories-tab" class="tab-content active">
+      <div class="card">
+        <div class="card-header"><h3 class="card-title">Expense Categories</h3><button class="btn btn-primary" id="addCategory">➕ Add Category</button></div>
+        <div class="card-body">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Code</th>
+                <th>Subcategories</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="categories"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="donors-tab" class="tab-content">
+      <div class="card">
+        <div class="card-header"><h3 class="card-title">Donors</h3><button class="btn btn-primary" id="addDonor">➕ Add Donor</button></div>
+        <div class="card-body">
+          <table class="data-table"><thead><tr><th>Name</th><th>Organization</th><th>Email</th><th>Phone</th><th>Status</th><th>Actions</th></tr></thead><tbody id="donors"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <div id="app-settings-tab" class="tab-content">
+      <div class="card"><div class="card-body">
+        <div class="grid grid-2">
+          <div class="form-group"><label class="form-label">Organization Name</label><input type="text" id="org" class="form-control"></div>
+          <div class="form-group"><label class="form-label">Currency</label><select id="cur" class="form-control"><option>EUR</option><option>USD</option><option>GBP</option></select></div>
+        </div>
+        <div class="form-group"><label class="form-label">Fiscal Year Start</label><select id="fys" class="form-control"><option value="1">January</option><option value="4">April</option><option value="7">July</option><option value="10">October</option></select></div>
+        <button class="btn btn-primary" id="save">Save Settings</button>
+        
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  function switchTab(name){
+    const container = document.getElementById('settings-page');
+    if(!container) return;
+    container.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+    container.querySelectorAll('.tab-button').forEach(b=>b.classList.remove('active'));
+    const activeTab = container.querySelector(`#${name}-tab`);
+    const activeBtn = container.querySelector(`.tab-button[data-tab="${name}"]`);
+    if (activeTab) activeTab.classList.add('active');
+    if (activeBtn) activeBtn.classList.add('active');
+  }
+
+  // General settings
+  async function loadGeneral(){ 
+    try {
+      const res=await window.callApi('/settings'); 
+      const s=res.data||{}; 
+      document.getElementById('org').value=s.orgName||'Paréa Lesvos'; 
+      document.getElementById('cur').value=s.currency||'EUR'; 
+      document.getElementById('fys').value=s.fiscalYearStart||'1'; 
+    } catch (error) {
+      console.warn('Settings load failed:', error);
+      // Use defaults
+      document.getElementById('org').value='Paréa Lesvos'; 
+      document.getElementById('cur').value='EUR'; 
+      document.getElementById('fys').value='1';
+    }
+  }
+  async function saveGeneral(){ 
+    try {
+      await window.callApi('/settings',{method:'POST', body: JSON.stringify({ orgName: document.getElementById('org').value, currency: document.getElementById('cur').value, fiscalYearStart: document.getElementById('fys').value })}); 
+      alert('Settings saved successfully!'); 
+    } catch (error) {
+      console.error('Settings save failed:', error);
+      alert('Failed to save settings. Please try again.');
+    }
+  }
+
+  // Categories
+  async function loadCategories() {
+    try {
+      const res = await window.callApi('/categories');
+      const list = res.data || [];
+      const tbody = document.getElementById('categories');
+      
+      if (list.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" style="text-align: center; padding: 20px; color: #999;">
+              No categories found. Click "Add Category" to create one.
+            </td>
+          </tr>`;
+        return;
+      }
+      
+      tbody.innerHTML = list.map(cat => {
+        // Handle subcategories - they can be either strings or objects with {id, name}
+        const subcategoriesArray = cat.subcategories || [];
+        const subcategoriesDisplay = subcategoriesArray.length > 0 
+          ? `<div style="display: flex; flex-wrap: wrap; gap: 4px;">
+              ${subcategoriesArray.map(sub => {
+                const subName = typeof sub === 'string' ? sub : sub.name;
+                const subId = typeof sub === 'object' ? sub.id : null;
+                const tooltip = subId ? `title="${subId}"` : '';
+                return `<span style="background: #e3f2fd; color: #1976d2; padding: 2px 8px; border-radius: 12px; font-size: 12px; cursor: help;" ${tooltip}>${esc(subName)}</span>`;
+              }).join('')}
+            </div>`
+          : '<span style="color: #999; font-size: 12px;">No subcategories</span>';
+        
+        const statusBadge = cat.active !== false 
+          ? '<span style="background: #c8e6c9; color: #2e7d32; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Active</span>'
+          : '<span style="background: #ffccbc; color: #d84315; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Inactive</span>';
+        
+        const categoryId = cat.category_id || '<span style="color: #999;">-</span>';
+        
+        return `<tr>
+          <td><code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 11px;">${categoryId}</code></td>
+          <td style="font-weight: 500;">${esc(cat.name)}</td>
+          <td><code style="background: #f5f5f5; padding: 2px 6px; border-radius: 3px;">${esc(cat.code || '')}</code></td>
+          <td>${subcategoriesDisplay}</td>
+          <td>${statusBadge}</td>
+          <td>
+            <button class='btn btn-sm btn-secondary' data-act='edit-cat' data-id='${cat.id}' style="margin-right: 4px;">
+              ✏️ Edit
+            </button>
+            <button class='btn btn-sm ${cat.active !== false ? 'btn-warning' : 'btn-success'}' data-act='toggle-cat' data-id='${cat.id}' style="margin-right: 4px;">
+              ${cat.active !== false ? '⏸️ Deactivate' : '▶️ Activate'}
+            </button>
+            <button class='btn btn-sm btn-danger' data-act='delete-cat' data-id='${cat.id}' data-name='${esc(cat.name)}'>
+              🗑️ Delete
+            </button>
+          </td>
+        </tr>`;
+      }).join('');
+    } catch (error) {
+      console.error('Failed to load categories:', error);
+      document.getElementById('categories').innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align: center; padding: 20px; color: #d32f2f;">
+            Failed to load categories. Please refresh the page.
+          </td>
+        </tr>`;
+    }
+  }
+  async function editCategory(id){
+    if (!id) { window.openCategoryModal(null); return; }
+    
+    // Fetch the actual category data from the backend instead of parsing HTML
+    try {
+      const res = await window.callApi('/categories');
+      const categories = res.data || [];
+      const cat = categories.find(c => c.id === id);
+      
+      if (cat) {
+        // Extract subcategory names from objects or strings
+        const subcategoryNames = (cat.subcategories || []).map(sub => 
+          typeof sub === 'string' ? sub : sub.name
+        );
+        
+        window.openCategoryModal({
+          id: cat.id,
+          name: cat.name,
+          code: cat.code,
+          subcategories: subcategoryNames,
+          active: cat.active !== false
+        });
+      } else {
+        console.error('Category not found:', id);
+        window.openCategoryModal({ id });
+      }
+    } catch (error) {
+      console.error('Failed to load category for editing:', error);
+      alert('Failed to load category data. Please try again.');
+    }
+  }
+  async function toggleCategory(id) {
+    const row = [...document.querySelectorAll('#categories [data-id]')].find(x => x.getAttribute('data-id') === id);
+    const isDeactivate = row && row.textContent.includes('Deactivate');
+    await window.callApi(`/categories/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ active: !isDeactivate })
+    });
+    await loadCategories();
+  }
+  
+  async function deleteCategory(id, name) {
+    try {
+      // First try to delete without force
+      const response = await window.callApi(`/categories/${id}`, {
+        method: 'DELETE'
+      });
+      
+      if (response.success) {
+        await loadCategories();
+        alert(`Category "${name}" deleted successfully.`);
+      }
+    } catch (error) {
+      // Check if it's because category is in use
+      if (error.message && error.message.includes('in use')) {
+        const forceDelete = confirm(
+          `Category "${name}" is currently in use by transactions.\n\n` +
+          `Would you like to force delete it anyway?\n\n` +
+          `Warning: This will leave transactions without a category.`
+        );
+        
+        if (forceDelete) {
+          try {
+            const forceResponse = await window.callApi(`/categories/${id}?force=true`, {
+              method: 'DELETE'
+            });
+            
+            if (forceResponse.success) {
+              await loadCategories();
+              alert(`Category "${name}" force deleted.`);
+            }
+          } catch (forceError) {
+            alert(`Failed to delete category: ${forceError.message}`);
+          }
+        }
+      } else {
+        alert(`Failed to delete category: ${error.message || 'Unknown error'}`);
+      }
+    }
+  }
+
+
+  // Donors
+  async function loadDonors() {
+    const res = await window.callApi('/donors');
+    const list = res.data || [];
+    const tbody = document.getElementById('donors');
+    tbody.innerHTML = list.map(d =>
+      `<tr>
+        <td>${esc(d.name)}</td>
+        <td>${esc(d.organization || '')}</td>
+        <td>${esc(d.email || '')}</td>
+        <td>${esc(d.phone || '')}</td>
+        <td>${d.active !== false ? 'Active' : 'Inactive'}</td>
+        <td>
+          <button class='btn btn-sm btn-secondary' data-act='edit-donor' data-id='${d.id}'>Edit</button>
+          <button class='btn btn-sm btn-danger' data-act='toggle-donor' data-id='${d.id}'>
+            ${d.active !== false ? 'Deactivate' : 'Activate'}
+          </button>
+        </td>
+      </tr>`
+    ).join('');
+  }
+  async function editDonor(id){
+    if (!id){ window.openDonorModal(null); return; }
+    const tr=[...document.querySelectorAll('#donors tr')].find(r=>r.querySelector(`[data-id="${id}"]`));
+    const d = tr ? { id, name: tr.children[0].textContent.trim(), organization: tr.children[1].textContent.trim(), email: tr.children[2].textContent.trim(), phone: tr.children[3].textContent.trim(), active: tr.children[4].textContent.trim()==='Active' } : { id };
+    window.openDonorModal(d);
+  }
+  async function toggleDonor(id){ const row=[...document.querySelectorAll('#donors [data-id]')].find(x=>x.getAttribute('data-id')===id); const isDeactivate = row && row.textContent.includes('Deactivate'); await window.callApi(`/donors/${id}/status`,{method:'PATCH', body: JSON.stringify({ active: !isDeactivate })}); await loadDonors(); }
+
+  function esc(t){ const d=document.createElement('div'); d.textContent=t||''; return d.innerHTML; }
+
+
+  window.initializeSettingsPage=function(){
+    const container = document.getElementById('settings-page');
+    container.querySelectorAll('.tab-button').forEach(b=>b.addEventListener('click',(e)=>{ e.preventDefault(); const t=b.getAttribute('data-tab'); switchTab(t);}));
+    document.getElementById('save').addEventListener('click', saveGeneral);
+    document.getElementById('addCategory').addEventListener('click', ()=>editCategory(''));
+    document.getElementById('addDonor').addEventListener('click', ()=>editDonor(''));
+    document.addEventListener('click', (e)=>{
+      const act=e.target.getAttribute('data-act'); 
+      const id=e.target.getAttribute('data-id'); 
+      if(!act||!id) return;
+      
+      if(act==='edit-cat') editCategory(id); 
+      if(act==='toggle-cat') toggleCategory(id);
+      if(act==='delete-cat') {
+        const name = e.target.getAttribute('data-name');
+        if(confirm(`Are you sure you want to delete the category "${name}"?`)) {
+          deleteCategory(id, name);
+        }
+      }
+      if(act==='edit-donor') editDonor(id); 
+      if(act==='toggle-donor') toggleDonor(id);
+    });
+    // initial loads
+    Promise.all([loadGeneral(), loadCategories(), loadDonors()]);
+  }
+  window.registerPageInitializer('settings', window.initializeSettingsPage);
+})();
+</script>
+

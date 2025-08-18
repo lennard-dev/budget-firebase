@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Auth Debug - Budget Management</title>
+  <link rel="stylesheet" href="/shared.css" />
+  <script defer src="/__/firebase/12.1.0/firebase-app-compat.js"></script>
+  <script defer src="/__/firebase/12.1.0/firebase-auth-compat.js"></script>
+  <script src="/firebase-config.js"></script>
+  <script defer src="/__/firebase/init.js"></script>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
+    .debug-container { max-width: 1200px; margin: 0 auto; }
+    .debug-card { background: #2d2d30; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    h1 { color: #4ec9b0; }
+    h2 { color: #569cd6; }
+    .btn { padding: 10px 20px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; background: #007acc; color: white; }
+    .btn:hover { background: #005a9e; }
+    .btn-danger { background: #f14c4c; }
+    .btn-danger:hover { background: #cd3131; }
+    .btn-success { background: #89d185; color: #1e1e1e; }
+    .btn-success:hover { background: #6cad68; }
+    pre { background: #1e1e1e; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    .log-entry { padding: 5px; margin: 2px 0; border-left: 3px solid #569cd6; }
+    .log-error { border-left-color: #f14c4c; color: #f14c4c; }
+    .log-success { border-left-color: #89d185; color: #89d185; }
+    .log-info { border-left-color: #569cd6; color: #569cd6; }
+    .status-indicator { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 10px; }
+    .status-online { background: #89d185; }
+    .status-offline { background: #f14c4c; }
+    .config-grid { display: grid; grid-template-columns: 200px 1fr; gap: 10px; }
+    .config-label { color: #9cdcfe; }
+    .config-value { color: #ce9178; font-family: monospace; }
+  </style>
+</head>
+<body>
+  <div class="debug-container">
+    <div class="debug-card">
+      <h1>🔧 Firebase Auth Debug Console</h1>
+      <p>This page helps diagnose authentication issues with Firebase.</p>
+    </div>
+
+    <div class="debug-card">
+      <h2>📊 Current Status</h2>
+      <div id="status-info">
+        <div class="config-grid">
+          <div class="config-label">Firebase Status:</div>
+          <div class="config-value"><span id="firebase-status" class="status-indicator status-offline"></span><span id="firebase-status-text">Checking...</span></div>
+          
+          <div class="config-label">Auth Status:</div>
+          <div class="config-value"><span id="auth-status" class="status-indicator status-offline"></span><span id="auth-status-text">Not initialized</span></div>
+          
+          <div class="config-label">Current User:</div>
+          <div class="config-value" id="current-user">None</div>
+          
+          <div class="config-label">Auth Domain:</div>
+          <div class="config-value" id="auth-domain">Not loaded</div>
+          
+          <div class="config-label">Project ID:</div>
+          <div class="config-value" id="project-id">Not loaded</div>
+          
+          <div class="config-label">Persistence:</div>
+          <div class="config-value" id="persistence">Not set</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="debug-card">
+      <h2>🧪 Test Actions</h2>
+      <div>
+        <button class="btn" onclick="testPopupAuth()">Test Popup Auth</button>
+        <button class="btn" onclick="testRedirectAuth()">Test Redirect Auth</button>
+        <button class="btn btn-success" onclick="checkRedirectResult()">Check Redirect Result</button>
+        <button class="btn" onclick="getCurrentUser()">Get Current User</button>
+        <button class="btn" onclick="clearCache()">Clear Auth Cache</button>
+        <button class="btn btn-danger" onclick="signOut()">Sign Out</button>
+        <button class="btn" onclick="clearLogs()">Clear Logs</button>
+      </div>
+    </div>
+
+    <div class="debug-card">
+      <h2>📝 Debug Log</h2>
+      <div id="debug-log" style="max-height: 500px; overflow-y: auto;">
+        <div class="log-entry log-info">Debug console initialized...</div>
+      </div>
+    </div>
+
+    <div class="debug-card">
+      <h2>💾 Local Storage & Session Storage</h2>
+      <div id="storage-info">
+        <h3>Local Storage:</h3>
+        <pre id="local-storage">Loading...</pre>
+        <h3>Session Storage:</h3>
+        <pre id="session-storage">Loading...</pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let auth = null;
+    let provider = null;
+
+    function log(message, type = 'info') {
+      const logDiv = document.getElementById('debug-log');
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logDiv.appendChild(entry);
+      logDiv.scrollTop = logDiv.scrollHeight;
+      console.log(`[AUTH-DEBUG] ${message}`);
+    }
+
+    function clearLogs() {
+      document.getElementById('debug-log').innerHTML = '<div class="log-entry log-info">Logs cleared</div>';
+    }
+
+    function updateStatus(elementId, isOnline, text) {
+      const indicator = document.getElementById(elementId);
+      const textEl = document.getElementById(elementId + '-text');
+      if (indicator) {
+        indicator.className = `status-indicator status-${isOnline ? 'online' : 'offline'}`;
+      }
+      if (textEl) {
+        textEl.textContent = text;
+      }
+    }
+
+    function displayStorageInfo() {
+      // Local Storage
+      const localData = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.includes('firebase') || key.includes('auth'))) {
+          try {
+            const value = localStorage.getItem(key);
+            localData[key] = value.length > 100 ? value.substring(0, 100) + '...' : value;
+          } catch (e) {
+            localData[key] = '<error reading>';
+          }
+        }
+      }
+      document.getElementById('local-storage').textContent = JSON.stringify(localData, null, 2);
+
+      // Session Storage
+      const sessionData = {};
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && (key.includes('firebase') || key.includes('auth'))) {
+          try {
+            const value = sessionStorage.getItem(key);
+            sessionData[key] = value.length > 100 ? value.substring(0, 100) + '...' : value;
+          } catch (e) {
+            sessionData[key] = '<error reading>';
+          }
+        }
+      }
+      document.getElementById('session-storage').textContent = JSON.stringify(sessionData, null, 2);
+    }
+
+    async function initializeDebug() {
+      log('Starting Firebase initialization...');
+
+      // Wait for Firebase to load
+      let attempts = 0;
+      while (!window.firebase && attempts < 20) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        attempts++;
+      }
+
+      // If Firebase didn't load, try fallback
+      if (!window.firebase) {
+        log('Auto-initialization failed, trying fallback configuration...', 'info');
+        try {
+          if (window.initializeFirebaseWithFallback) {
+            await window.initializeFirebaseWithFallback();
+            log('Firebase initialized with fallback configuration', 'success');
+          } else {
+            throw new Error('Fallback configuration not available');
+          }
+        } catch (e) {
+          log('Firebase failed to load after fallback attempt: ' + e.message, 'error');
+          updateStatus('firebase-status', false, 'Failed to load');
+          return;
+        }
+      }
+
+      log('Firebase loaded successfully', 'success');
+      updateStatus('firebase-status', true, 'Loaded');
+
+      try {
+        // Get Firebase config
+        const app = firebase.app();
+        const config = app.options;
+        document.getElementById('auth-domain').textContent = config.authDomain || 'Not configured';
+        document.getElementById('project-id').textContent = config.projectId || 'Not configured';
+        
+        // Initialize Auth
+        auth = firebase.auth();
+        provider = new firebase.auth.GoogleAuthProvider();
+        
+        log('Firebase Auth initialized', 'success');
+        updateStatus('auth-status', true, 'Initialized');
+
+        // Set persistence
+        try {
+          await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+          document.getElementById('persistence').textContent = 'LOCAL';
+          log('Persistence set to LOCAL', 'success');
+        } catch (e) {
+          document.getElementById('persistence').textContent = 'Failed: ' + e.message;
+          log('Failed to set persistence: ' + e.message, 'error');
+        }
+
+        // Check current user
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          document.getElementById('current-user').textContent = currentUser.email;
+          log('Current user found: ' + currentUser.email, 'success');
+        } else {
+          log('No current user', 'info');
+        }
+
+        // Set up auth state listener
+        auth.onAuthStateChanged((user) => {
+          if (user) {
+            document.getElementById('current-user').textContent = user.email;
+            log('Auth state changed: User signed in - ' + user.email, 'success');
+            updateStatus('auth-status', true, 'Authenticated');
+          } else {
+            document.getElementById('current-user').textContent = 'None';
+            log('Auth state changed: User signed out', 'info');
+            updateStatus('auth-status', true, 'Not authenticated');
+          }
+          displayStorageInfo();
+        });
+
+        // Check for redirect result
+        await checkRedirectResult();
+        
+      } catch (e) {
+        log('Error initializing auth: ' + e.message, 'error');
+        updateStatus('auth-status', false, 'Error: ' + e.message);
+      }
+
+      displayStorageInfo();
+    }
+
+    async function testPopupAuth() {
+      if (!auth || !provider) {
+        log('Auth not initialized', 'error');
+        return;
+      }
+
+      log('Starting popup authentication...');
+      try {
+        const result = await auth.signInWithPopup(provider);
+        log('Popup auth successful: ' + result.user.email, 'success');
+      } catch (e) {
+        log('Popup auth failed: ' + e.message, 'error');
+        if (e.code === 'auth/popup-blocked') {
+          log('Popup was blocked by browser', 'error');
+        }
+      }
+    }
+
+    async function testRedirectAuth() {
+      if (!auth || !provider) {
+        log('Auth not initialized', 'error');
+        return;
+      }
+
+      log('Starting redirect authentication...');
+      try {
+        await auth.signInWithRedirect(provider);
+        log('Redirect initiated (page will reload)...', 'info');
+      } catch (e) {
+        log('Redirect auth failed: ' + e.message, 'error');
+      }
+    }
+
+    async function checkRedirectResult() {
+      if (!auth) {
+        log('Auth not initialized', 'error');
+        return;
+      }
+
+      log('Checking for redirect result...');
+      try {
+        const result = await auth.getRedirectResult();
+        if (result && result.user) {
+          log('Found redirect result: ' + result.user.email, 'success');
+          document.getElementById('current-user').textContent = result.user.email;
+        } else if (result) {
+          log('Redirect result exists but no user', 'info');
+        } else {
+          log('No redirect result found', 'info');
+        }
+      } catch (e) {
+        log('Error checking redirect result: ' + e.message, 'error');
+      }
+    }
+
+    function getCurrentUser() {
+      if (!auth) {
+        log('Auth not initialized', 'error');
+        return;
+      }
+
+      const user = auth.currentUser;
+      if (user) {
+        log('Current user: ' + user.email + ' (UID: ' + user.uid + ')', 'success');
+        log('Provider: ' + (user.providerData[0]?.providerId || 'unknown'), 'info');
+        log('Email verified: ' + user.emailVerified, 'info');
+      } else {
+        log('No current user', 'info');
+      }
+    }
+
+    async function signOut() {
+      if (!auth) {
+        log('Auth not initialized', 'error');
+        return;
+      }
+
+      try {
+        await auth.signOut();
+        log('Signed out successfully', 'success');
+      } catch (e) {
+        log('Sign out failed: ' + e.message, 'error');
+      }
+    }
+
+    function clearCache() {
+      log('Clearing auth-related cache...');
+      
+      // Clear Firebase auth entries from localStorage
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.includes('firebase') || key.includes('auth'))) {
+          keysToRemove.push(key);
+        }
+      }
+      
+      keysToRemove.forEach(key => {
+        localStorage.removeItem(key);
+        log('Removed from localStorage: ' + key, 'info');
+      });
+
+      // Clear sessionStorage
+      const sessionKeysToRemove = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && (key.includes('firebase') || key.includes('auth'))) {
+          sessionKeysToRemove.push(key);
+        }
+      }
+      
+      sessionKeysToRemove.forEach(key => {
+        sessionStorage.removeItem(key);
+        log('Removed from sessionStorage: ' + key, 'info');
+      });
+
+      log('Cache cleared. Refresh the page to restart.', 'success');
+      displayStorageInfo();
+    }
+
+    // Start initialization when page loads
+    window.addEventListener('DOMContentLoaded', initializeDebug);
+  </script>
+</body>
+</html>

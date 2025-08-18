@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Import Expenses</title>
+    <link rel="stylesheet" href="/shared.css" />
+    <script defer src="/__/firebase/12.1.0/firebase-app-compat.js"></script>
+    <script defer src="/__/firebase/12.1.0/firebase-auth-compat.js"></script>
+    <script defer src="/__/firebase/12.1.0/firebase-firestore-compat.js"></script>
+    <script defer src="/__/firebase/12.1.0/firebase-functions-compat.js"></script>
+    <script defer src="/__/firebase/init.js"></script>
+    <script defer src="/app.js"></script>
+  </head>
+  <body class="app-container">
+    <div class="nav-header">
+      <div class="nav-brand"><h1>Paréa Lesvos Budget Management</h1></div>
+      <nav class="nav-menu">
+        <a href="/index.html" class="nav-link" data-page="dashboard"><span class="nav-icon">📊</span><span class="nav-text">Dashboard</span></a>
+        <a href="/expenses.html" class="nav-link" data-page="expenses"><span class="nav-icon">💰</span><span class="nav-text">Expenses</span></a>
+        <a href="/budgets.html" class="nav-link" data-page="budget"><span class="nav-icon">📈</span><span class="nav-text">Budgets</span></a>
+        <a href="/cash-banking.html" class="nav-link" data-page="cash-banking"><span class="nav-icon">🏦</span><span class="nav-text">Cash & Banking</span></a>
+        <a href="/settings.html" class="nav-link" data-page="settings"><span class="nav-icon">⚙️</span><span class="nav-text">Settings</span></a>
+        <button id="signout" class="btn btn-secondary" style="margin-left:12px;">Sign out</button>
+      </nav>
+    </div>
+    <div class="content-area">
+      <div class="page-header">
+        <h2 class="page-title">Import Legacy Expense Data</h2>
+        <div class="page-actions">
+          <a class="btn btn-secondary" href="/index.html">Home</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <div class="form-group">
+            <label class="form-label">Upload CSV File</label>
+            <input type="file" id="file" accept=".csv" class="form-control" />
+          </div>
+          <button class="btn btn-primary" id="upload">Upload</button>
+          <pre id="log" style="margin-top:12px; white-space:pre-wrap;"></pre>
+        </div>
+      </div>
+    </div>
+    <script>
+      function log(msg) { document.getElementById('log').textContent += msg + "\n"; }
+      function parseCSV(text) {
+        const lines = text.split(/\r?\n/).filter(l=>l.trim()!=='');
+        const headers = lines[0].split(',').map(h=>h.trim());
+        return lines.slice(1).map(line => {
+          const values = [];
+          let cur = '', inQ = false;
+          for (let i=0;i<line.length;i++){
+            const c=line[i], n=line[i+1];
+            if (c==='"') { if (inQ && n==='"'){cur+='"';i++;} else { inQ=!inQ; } }
+            else if (c===',' && !inQ) { values.push(cur.trim()); cur=''; }
+            else { cur+=c; }
+          }
+          values.push(cur.trim());
+          const obj={}; headers.forEach((h,idx)=>obj[h]=values[idx]||'');
+          return obj;
+        });
+      }
+      function mapRow(row){
+        // Adjust mapping to your legacy CSV columns
+        const dateStr = row['Date of expense'] || row['Date'] || '';
+        const date = new Date(dateStr);
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth()+1).padStart(2,'0');
+        const dd = String(date.getDate()).padStart(2,'0');
+        const iso = `${yyyy}-${mm}-${dd}`;
+        return {
+          date: iso,
+          receiptId: row['Receipt ID'] || '',
+          category: row['Category'] || 'Other',
+          subcategory: row['Expense'] || 'General',
+          description: row['Description'] || '',
+          amount: parseFloat(row['Amount']||row['Amount  ']||'0')||0,
+          paymentMethod: row['Expense Type'] || 'Bank Transfer',
+          createdBy: firebase.auth().currentUser?.email || ''
+        };
+      }
+      async function upload(){
+        const f = document.getElementById('file').files[0];
+        if(!f){ alert('Pick a CSV'); return; }
+        const text = await f.text();
+        const rows = parseCSV(text).map(mapRow).filter(x=>x.date && x.amount>0);
+        log(`Parsed ${rows.length} rows`);
+        const batchSize = 200;
+        for(let i=0;i<rows.length;i+=batchSize){
+          const chunk = rows.slice(i,i+batchSize);
+          await window.callApi('/import/expenses-batch', { method:'POST', body: JSON.stringify(chunk) });
+          log(`Imported ${Math.min(i+batchSize, rows.length)}/${rows.length}`);
+        }
+        log('Done');
+      }
+      document.getElementById('upload').addEventListener('click', upload);
+    </script>
+  </body>
+  </html>
+
+

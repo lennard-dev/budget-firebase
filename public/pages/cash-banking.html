@@ -1,0 +1,1207 @@
+<div class="content-area" id="cash-banking-page">
+  <div class="page-header">
+    <h2 class="page-title">Cash & Banking</h2>
+    <div class="page-actions">
+      <button class="btn btn-primary" id="record-movement">💰 Record Movement</button>
+    </div>
+  </div>
+  
+  <!-- Summary Cards (Budget page style) -->
+  <div class="budget-summary-row">
+    <div class="card">
+      <div class="summary-label">Current Cash Balance</div>
+      <div id="cb-cash" class="summary-value">€0.00</div>
+      <small id="cb-cash-trend" class="summary-trend">Updated just now</small>
+    </div>
+    <div class="card">
+      <div class="summary-label">Expected Donations</div>
+      <div id="cb-expected" class="summary-value text-info">€0.00</div>
+      <small id="cb-expected-count" class="summary-trend">0 pending</small>
+    </div>
+    <div class="card">
+      <div class="summary-label">Received This Month</div>
+      <div id="cb-received" class="summary-value text-success">€0.00</div>
+      <small id="cb-received-count" class="summary-trend">0 donations</small>
+    </div>
+    <div class="card">
+      <div class="summary-label">Bank Balance</div>
+      <div id="cb-bank" class="summary-value">€0.00</div>
+      <small class="summary-trend">Updated just now</small>
+    </div>
+  </div>
+
+  <!-- Tab Navigation (Budget page style) -->
+  <div class="tab-nav-container">
+    <div class="tab-nav">
+      <button class="tab-nav-button active" data-tab="movements">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="2" x2="12" y2="22"></line>
+          <polyline points="19 9 12 2 5 9"></polyline>
+          <polyline points="19 15 12 22 5 15"></polyline>
+        </svg>
+        Cash Movements
+      </button>
+      <button class="tab-nav-button" data-tab="bank">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+          <line x1="1" y1="10" x2="23" y2="10"></line>
+        </svg>
+        Bank Movements
+      </button>
+      <button class="tab-nav-button" data-tab="expected">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        Expected Income
+      </button>
+    </div>
+  </div>
+  
+  <!-- Cash Movements Tab -->
+  <div class="tab-panel active" id="tab-movements">
+    <!-- Filter Menu - Fixed to single row -->
+    <div class="card mb-3" style="overflow: hidden;">
+      <div class="card-body" style="padding: 0;">
+        <div class="filters">
+          <div class="filters-row">
+            <div class="filter-item" style="flex: 0 1 auto; min-width: 140px;">
+              <label class="form-label">Quick Select</label>
+              <select id="cb-quick" class="form-control">
+                <option value="">Custom Range</option>
+                <option value="7">Past 7 Days</option>
+                <option value="30" selected>Past 30 Days</option>
+                <option value="90">Past 90 Days</option>
+                <option value="365">Past 12 Months</option>
+                <option value="all">All Time</option>
+              </select>
+            </div>
+            <div class="filter-item" style="flex: 0 1 auto; min-width: 140px;">
+              <label class="form-label">Start Date</label>
+              <input type="date" id="cb-start" class="form-control" />
+            </div>
+            <div class="filter-item" style="flex: 0 1 auto; min-width: 140px;">
+              <label class="form-label">End Date</label>
+              <input type="date" id="cb-end" class="form-control" />
+            </div>
+            <div class="filter-item" style="flex: 0 1 auto; min-width: 160px;">
+              <label class="form-label">Type</label>
+              <select id="cb-type-filter" class="form-control">
+                <option value="">All Types</option>
+                <option value="withdrawal">Withdrawal</option>
+                <option value="deposit">Deposit</option>
+                <option value="donation">Donation</option>
+                <option value="cash-expense">Cash Expense</option>
+              </select>
+            </div>
+            <div class="filter-item" style="flex: 1 1 200px; min-width: 200px;">
+              <label class="form-label">Search</label>
+              <input type="text" id="cb-search" class="form-control" placeholder="Search description..." />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Main Content Card -->
+    <div class="card" style="position: relative;">
+      <div class="card-body" style="padding: 0;">
+        <div style="padding-bottom: 42px;">
+          <table class="data-table" style="margin: 0;">
+            <thead>
+              <tr>
+                <th class="col-date">DATE</th>
+                <th class="col-type">TYPE</th>
+                <th class="col-description">DESCRIPTION</th>
+                <th class="col-amount text-right">AMOUNT</th>
+                <th class="col-balance text-right">REM. BALANCE</th>
+                <th class="col-actions text-center">ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="cb-tbody">
+              <tr><td colspan="6" class="text-center text-muted">Loading cash movements...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="bottom-bar" id="cb-bottom-bar">
+        <div class="bottom-bar-left">
+          <span id="cb-opening-balance" style="display:none; font-size: 13px;">
+            <span class="text-muted">Opening Balance:&nbsp;&nbsp;</span>
+            <strong id="cb-opening-amount" style="font-weight: 600;">€0.00</strong>
+          </span>
+        </div>
+        <div class="bottom-bar-center" id="cb-loadmore-wrap" style="display:none;">
+          <button class="btn btn-secondary btn-sm" id="cb-more">Load More</button>
+        </div>
+        <div class="bottom-bar-right">
+          <span id="cb-items-info" class="text-muted" style="font-size: 13px;"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Expected Income Tab -->
+  <div class="tab-panel" id="tab-expected">
+    <div class="card">
+      <div class="action-bar">
+        <button class="btn btn-sm btn-primary" onclick="openExpectedIncomeModal()">➕ Add Expected Income</button>
+        <button class="btn btn-sm btn-outline" onclick="exportExpectedIncome()">Export</button>
+      </div>
+      
+      <div class="card-body">
+        <table class="data-table" id="expected-table">
+          <thead>
+            <tr>
+              <th>Expected Date</th>
+              <th>Source</th>
+              <th>Description</th>
+              <th class="text-right">Amount</th>
+              <th>Status</th>
+              <th class="text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="expected-tbody">
+            <tr>
+              <td colspan="6" class="text-center text-muted">No expected income entries yet</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Bank Movements Tab -->
+  <div class="tab-panel" id="tab-bank">
+    <!-- Filter Menu - Fixed to single row -->
+    <div class="card mb-3" style="overflow: hidden;">
+      <div class="card-body" style="padding: 0;">
+        <div class="filters">
+          <div class="filters-row">
+            <div class="filter-item" style="flex: 0 1 auto; min-width: 140px;">
+              <label class="form-label">Quick Select</label>
+              <select id="bank-quick" class="form-control">
+                <option value="">Custom Range</option>
+                <option value="7">Past 7 Days</option>
+                <option value="30" selected>Past 30 Days</option>
+                <option value="90">Past 90 Days</option>
+                <option value="365">Past 12 Months</option>
+                <option value="all">All Time</option>
+              </select>
+            </div>
+            <div class="filter-item" style="flex: 0 1 auto; min-width: 140px;">
+              <label class="form-label">Start Date</label>
+              <input type="date" id="bank-start" class="form-control" />
+            </div>
+            <div class="filter-item" style="flex: 0 1 auto; min-width: 140px;">
+              <label class="form-label">End Date</label>
+              <input type="date" id="bank-end" class="form-control" />
+            </div>
+            <div class="filter-item" style="flex: 0 1 auto; min-width: 160px;">
+              <label class="form-label">Type</label>
+              <select id="bank-type-filter" class="form-control">
+                <option value="">All Types</option>
+                <option value="transfer">Transfer</option>
+                <option value="payment">Payment</option>
+                <option value="income">Income</option>
+              </select>
+            </div>
+            <div class="filter-item" style="flex: 1 1 200px; min-width: 200px;">
+              <label class="form-label">Search</label>
+              <input type="text" id="bank-search" class="form-control" placeholder="Search description..." />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Main Content Card -->
+    <div class="card" style="position: relative;">
+      <div class="card-body" style="padding: 0;">
+        <div style="padding-bottom: 42px;">
+          <table class="data-table" style="margin: 0;">
+            <thead>
+              <tr>
+                <th class="col-date">DATE</th>
+                <th class="col-type">TYPE</th>
+                <th class="col-description">DESCRIPTION</th>
+                <th class="col-amount text-right">AMOUNT</th>
+                <th class="col-balance text-right">REM. BALANCE</th>
+                <th class="col-actions text-center">ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="bank-tbody">
+              <tr><td colspan="6" class="text-center text-muted">Loading bank movements...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="bottom-bar" id="bank-bottom-bar">
+        <div class="bottom-bar-left">
+          <span id="bank-opening-balance" style="display:none; font-size: 13px;">
+            <span class="text-muted">Opening Balance:&nbsp;&nbsp;</span>
+            <strong id="bank-opening-amount" style="font-weight: 600;">€0.00</strong>
+          </span>
+        </div>
+        <div class="bottom-bar-center" id="bank-loadmore-wrap" style="display:none;">
+          <button class="btn btn-secondary btn-sm" id="bank-more">Load More</button>
+        </div>
+        <div class="bottom-bar-right">
+          <span id="bank-items-info" class="text-muted" style="font-size: 13px;"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Unified Record Movement Modal -->
+<div id="movement-modal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Record Movement</h3>
+      <button class="close-modal" onclick="closeMovementModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Account</label>
+        <select id="movement-account" class="form-control" onchange="updateMovementForm(false)">
+          <option value="cash">Cash</option>
+          <option value="bank">Bank</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Type</label>
+        <select id="movement-type" class="form-control" onchange="updateMovementForm(true)">
+          <option value="expense">Expense</option>
+          <option value="income">Income / Donation</option>
+          <option value="withdrawal">Bank Withdrawal (to Cash)</option>
+          <option value="deposit">Cash Deposit (to Bank)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="movement-date" class="form-control" />
+      </div>
+      <div class="form-group">
+        <label>Amount (€)</label>
+        <input type="number" id="movement-amount" class="form-control" step="0.01" min="0" />
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <input type="text" id="movement-description" class="form-control" />
+      </div>
+      <div class="form-group" id="movement-category-group">
+        <label>Category</label>
+        <select id="movement-category" class="form-control">
+          <option value="">Select category...</option>
+        </select>
+      </div>
+      <div class="form-group" id="movement-payment-group" style="display:none;">
+        <label>Payment Method</label>
+        <select id="movement-payment" class="form-control">
+          <option value="Cash">Cash</option>
+          <option value="Bank Transfer">Bank Transfer</option>
+          <option value="Card">Card</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeMovementModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveMovement()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // State management
+  let allMovements = [];
+  let filteredMovements = [];
+  let currentFilters = {
+    startDate: '',
+    endDate: '',
+    type: '',
+    search: ''
+  };
+  let cashPageSize = 50;
+  let cashCurrentPage = 1;
+  let bankPageSize = 50;
+  let bankCurrentPage = 1;
+  let categories = [];
+
+  // Utility functions
+  function fmt(amount) {
+    if (amount === null || amount === undefined) return '€0.00';
+    // Show negative amounts with minus sign
+    if (amount < 0) {
+      return '-€' + Math.abs(amount).toFixed(2);
+    }
+    return '€' + amount.toFixed(2);
+  }
+  
+  function fmtSigned(amount) {
+    if (amount === null || amount === undefined) return '€0.00';
+    const sign = amount < 0 ? '-' : '+';
+    return sign + '€' + Math.abs(amount).toFixed(2);
+  }
+  
+  function formatDate(dateStr) {
+    if (!dateStr) return '';
+    return new Date(dateStr).toLocaleDateString('en-GB');
+  }
+  
+  function esc(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+  }
+  
+  // Initialize date filters based on quick select
+  function updateDateFilters() {
+    const quick = document.getElementById('cb-quick').value;
+    const endDate = new Date();
+    let startDate = new Date();
+    
+    if (quick && quick !== 'all') {
+      startDate.setDate(endDate.getDate() - parseInt(quick));
+      const startStr = startDate.toISOString().split('T')[0];
+      const endStr = endDate.toISOString().split('T')[0];
+      
+      document.getElementById('cb-start').value = startStr;
+      document.getElementById('cb-end').value = endStr;
+      currentFilters.startDate = startStr;
+      currentFilters.endDate = endStr;
+    } else if (quick === 'all' || !quick) {
+      document.getElementById('cb-start').value = '';
+      document.getElementById('cb-end').value = '';
+      currentFilters.startDate = '';
+      currentFilters.endDate = '';
+    }
+  }
+  
+  // Tab switching
+  function switchTab(tabId) {
+    document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
+    document.querySelectorAll('.tab-nav-button').forEach(btn => btn.classList.remove('active'));
+    
+    document.getElementById(`tab-${tabId}`).classList.add('active');
+    document.querySelector(`.tab-nav-button[data-tab="${tabId}"]`).classList.add('active');
+    
+    // Load data for the active tab
+    if (tabId === 'movements') {
+      loadCashMovements();
+    } else if (tabId === 'bank') {
+      loadBankMovements();
+    } else if (tabId === 'expected') {
+      loadExpectedIncome();
+    }
+  }
+  
+  // Load summary data using new clean backend
+  async function loadSummary() {
+    try {
+      console.log('Loading summary from clean backend...');
+      
+      // Get current balances from the new API
+      const balances = await window.TransactionService.getBalances();
+      
+      const cashBalance = balances.cash || 0;
+      const bankBalance = balances.bank || 0;
+      
+      console.log(`Clean backend balances: Cash = €${cashBalance.toFixed(2)}, Bank = €${bankBalance.toFixed(2)}`);
+      
+      // Calculate this month's received donations
+      const thisMonth = new Date();
+      const monthStart = new Date(thisMonth.getFullYear(), thisMonth.getMonth(), 1).toISOString().split('T')[0];
+      const monthEnd = new Date(thisMonth.getFullYear(), thisMonth.getMonth() + 1, 0).toISOString().split('T')[0];
+      
+      const monthTransactions = await window.TransactionService.getList({
+        type: 'income',
+        startDate: monthStart,
+        endDate: monthEnd
+      });
+      
+      const donationsThisMonth = monthTransactions.reduce((sum, txn) => sum + Math.abs(txn.amount), 0);
+      const donationCount = monthTransactions.length;
+      
+      // Update the display
+      document.getElementById('cb-cash').textContent = fmt(cashBalance);
+      document.getElementById('cb-expected').textContent = fmt(0); // To be implemented with expected income feature
+      document.getElementById('cb-received').textContent = fmt(donationsThisMonth);
+      document.getElementById('cb-bank').textContent = fmt(bankBalance);
+      
+      document.getElementById('cb-expected-count').textContent = '0 pending';
+      document.getElementById('cb-received-count').textContent = `${donationCount} donations`;
+      document.getElementById('cb-cash-trend').textContent = 'Updated just now';
+      
+      // Store global balances
+      window.currentCashBalance = cashBalance;
+      window.currentBankBalance = bankBalance;
+      
+    } catch (error) {
+      console.error('Failed to load summary:', error);
+      document.getElementById('cb-cash').textContent = '€-.--';
+      document.getElementById('cb-expected').textContent = '€-.--';
+      document.getElementById('cb-received').textContent = '€-.--';
+      document.getElementById('cb-bank').textContent = '€-.--';
+      document.getElementById('cb-cash-trend').textContent = 'Error loading data';
+    }
+  }
+  
+  // Load cash movements using the new ledger API
+  async function loadCashMovements(append = false) {
+    try {
+      // Get filters
+      const params = {};
+      if (currentFilters.startDate) params.startDate = currentFilters.startDate;
+      if (currentFilters.endDate) params.endDate = currentFilters.endDate;
+      params.limit = 1000; // Get more entries
+      
+      console.log('Loading cash movements with params:', params);
+      
+      // Load from the clean ledger API
+      const ledgerEntries = await window.TransactionService.getLedger('cash', params);
+      
+      console.log('Cash ledger entries received:', ledgerEntries);
+      
+      if (ledgerEntries && ledgerEntries.length > 0) {
+        displayCashMovements(ledgerEntries);
+      } else {
+        // No data
+        console.log('No cash movements found in ledger');
+        document.getElementById('cb-tbody').innerHTML = 
+          '<tr><td colspan="6" class="text-center text-muted">No cash movements found</td></tr>';
+      }
+      
+    } catch (error) {
+      console.error('Error loading cash movements:', error);
+      document.getElementById('cb-tbody').innerHTML = 
+        '<tr><td colspan="6" class="text-center text-danger">Failed to load cash movements</td></tr>';
+    }
+  }
+  
+  // Display cash movements from ledger entries
+  function displayCashMovements(ledgerEntries) {
+    const tbody = document.getElementById('cb-tbody');
+    
+    if (!ledgerEntries || ledgerEntries.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No cash movements found</td></tr>';
+      return;
+    }
+    
+    // Cash movements show all cash account ledger entries (already filtered by account='cash' in the query)
+    let filtered = ledgerEntries;
+    
+    if (currentFilters.type) {
+      filtered = filtered.filter(entry => {
+        if (currentFilters.type === 'cash-expense') return entry.type === 'expense';
+        if (currentFilters.type === 'donation') return entry.type === 'income';
+        if (currentFilters.type === 'withdrawal') return entry.subtype === 'withdrawal';
+        if (currentFilters.type === 'deposit') return entry.subtype === 'deposit';
+        return true;
+      });
+    }
+    
+    if (currentFilters.search) {
+      const searchLower = currentFilters.search.toLowerCase();
+      filtered = filtered.filter(entry => 
+        entry.description?.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    // Use filtered data directly - backend already handles sorting and limiting
+    const displayItems = filtered;
+    
+    // Build table rows
+    const rows = displayItems.map(entry => {
+      const typeLabel = getTypeLabel(entry.type, entry.subtype, entry.paymentMethod);
+      const typeClass = getTypeClass(entry.type, entry.subtype);
+      const amountClass = entry.change_amount < 0 ? 'text-danger' : 'text-success';
+      const isExpense = entry.type === 'expense';
+      
+      return `
+        <tr>
+          <td class="col-date">${formatDate(entry.date)}</td>
+          <td class="col-type">
+            <span class="badge badge-${typeClass}">${typeLabel}</span>
+          </td>
+          <td class="col-description">${esc(entry.description || '-')}</td>
+          <td class="col-amount text-right ${amountClass}">
+            ${fmt(Math.abs(entry.change_amount))}
+          </td>
+          <td class="col-balance text-right">
+            <strong>${fmt(entry.display_balance || entry.balance_after)}</strong>
+          </td>
+          <td class="col-actions text-center">
+            ${isExpense ? `
+              <button class="btn btn-sm btn-ghost" onclick="viewReceipt('${entry.transaction_id}')" title="View Receipt">
+                👁️
+              </button>
+            ` : ''}
+            <button class="btn btn-sm btn-ghost" onclick="openActionMenu('${entry.transaction_id}')" title="Actions">
+              ⚙️
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+    
+    tbody.innerHTML = rows || '<tr><td colspan="6" class="text-center text-muted">No movements to display</td></tr>';
+    
+    // Update pagination info
+    document.getElementById('cb-items-info').textContent = 
+      `Showing ${displayItems.length} of ${filtered.length} items`;
+    
+    // Show/hide load more button
+    const loadMoreWrap = document.getElementById('cb-loadmore-wrap');
+    if (filtered.length > displayItems.length) {
+      loadMoreWrap.style.display = 'block';
+    } else {
+      loadMoreWrap.style.display = 'none';
+    }
+    
+    // Show opening balance if we have entries
+    if (displayItems.length > 0) {
+      const lastItem = displayItems[displayItems.length - 1];
+      const openingBalance = lastItem.balance_before || 0;
+      document.getElementById('cb-opening-balance').style.display = 'inline-block';
+      document.getElementById('cb-opening-amount').textContent = fmt(openingBalance);
+    }
+  }
+  
+  // Load bank movements using the new ledger API
+  async function loadBankMovements(append = false) {
+    try {
+      // Get filters from bank filter controls
+      const params = {};
+      const bankQuick = document.getElementById('bank-quick').value;
+      
+      if (bankQuick && bankQuick !== 'all') {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(endDate.getDate() - parseInt(bankQuick));
+        params.startDate = startDate.toISOString().split('T')[0];
+        params.endDate = endDate.toISOString().split('T')[0];
+      } else {
+        const bankStart = document.getElementById('bank-start').value;
+        const bankEnd = document.getElementById('bank-end').value;
+        if (bankStart) params.startDate = bankStart;
+        if (bankEnd) params.endDate = bankEnd;
+      }
+      
+      params.limit = 1000;
+      
+      // Load from the clean ledger API
+      const ledgerEntries = await window.TransactionService.getLedger('bank', params);
+      
+      if (ledgerEntries && ledgerEntries.length > 0) {
+        displayBankMovements(ledgerEntries);
+      } else {
+        document.getElementById('bank-tbody').innerHTML = 
+          '<tr><td colspan="6" class="text-center text-muted">No bank movements found</td></tr>';
+      }
+      
+    } catch (error) {
+      console.error('Error loading bank movements:', error);
+      document.getElementById('bank-tbody').innerHTML = 
+        '<tr><td colspan="6" class="text-center text-danger">Failed to load bank movements</td></tr>';
+    }
+  }
+  
+  // Display bank movements from ledger entries
+  function displayBankMovements(ledgerEntries) {
+    const tbody = document.getElementById('bank-tbody');
+    
+    if (!ledgerEntries || ledgerEntries.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No bank movements found</td></tr>';
+      return;
+    }
+    
+    // CRITICAL: Filter out cash expenses from bank movements
+    // Bank movements should only show: Card payments, Bank transfers, Bank fees, Deposits/Withdrawals, Income
+    let filtered = ledgerEntries.filter(entry => {
+      // If it's an expense, only include if payment method is NOT Cash
+      if (entry.type === 'expense') {
+        return entry.paymentMethod !== 'Cash' && entry.paymentMethod !== null;
+      }
+      // Include all other types (income, transfers, etc.)
+      return true;
+    });
+    const bankTypeFilter = document.getElementById('bank-type-filter').value;
+    if (bankTypeFilter) {
+      filtered = filtered.filter(entry => {
+        if (bankTypeFilter === 'transfer') return entry.type === 'transfer';
+        if (bankTypeFilter === 'payment') return entry.type === 'expense';
+        if (bankTypeFilter === 'income') return entry.type === 'income';
+        return true;
+      });
+    }
+    
+    // Apply search filter
+    const bankSearch = document.getElementById('bank-search').value;
+    if (bankSearch) {
+      const searchLower = bankSearch.toLowerCase();
+      filtered = filtered.filter(entry => 
+        entry.description?.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    // Use filtered data directly - backend already handles sorting and limiting
+    const displayItems = filtered;
+    
+    // Build table rows
+    const rows = displayItems.map(entry => {
+      const typeLabel = getTypeLabel(entry.type, entry.subtype, entry.paymentMethod);
+      const typeClass = getTypeClass(entry.type, entry.subtype);
+      const amountClass = entry.change_amount < 0 ? 'text-danger' : 'text-success';
+      const isExpense = entry.type === 'expense';
+      
+      return `
+        <tr>
+          <td class="col-date">${formatDate(entry.date)}</td>
+          <td class="col-type">
+            <span class="badge badge-${typeClass}">${typeLabel}</span>
+          </td>
+          <td class="col-description">${esc(entry.description || '-')}</td>
+          <td class="col-amount text-right ${amountClass}">
+            ${fmt(Math.abs(entry.change_amount))}
+          </td>
+          <td class="col-balance text-right">
+            <strong>${fmt(entry.display_balance || entry.balance_after)}</strong>
+          </td>
+          <td class="col-actions text-center">
+            ${isExpense ? `
+              <button class="btn btn-sm btn-ghost" onclick="viewReceipt('${entry.transaction_id}')" title="View Receipt">
+                👁️
+              </button>
+            ` : ''}
+            <button class="btn btn-sm btn-ghost" onclick="openActionMenu('${entry.transaction_id}')" title="Actions">
+              ⚙️
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+    
+    tbody.innerHTML = rows || '<tr><td colspan="6" class="text-center text-muted">No movements to display</td></tr>';
+    
+    // Update pagination info
+    document.getElementById('bank-items-info').textContent = 
+      `Showing ${displayItems.length} of ${filtered.length} items`;
+    
+    // Show/hide load more button
+    const loadMoreWrap = document.getElementById('bank-loadmore-wrap');
+    if (filtered.length > displayItems.length) {
+      loadMoreWrap.style.display = 'block';
+    } else {
+      loadMoreWrap.style.display = 'none';
+    }
+    
+    // Show opening balance if we have entries
+    if (displayItems.length > 0) {
+      const lastItem = displayItems[displayItems.length - 1];
+      const openingBalance = lastItem.balance_before || 0;
+      document.getElementById('bank-opening-balance').style.display = 'inline-block';
+      document.getElementById('bank-opening-amount').textContent = fmt(openingBalance);
+    }
+  }
+  
+  // Helper functions for type display
+  function getTypeLabel(type, subtype, paymentMethod) {
+    if (type === 'expense') {
+      // Display the actual payment method for expenses
+      if (paymentMethod === 'Cash') return 'Cash Expense';
+      if (paymentMethod === 'Card') return 'Card Expense';
+      if (paymentMethod === 'Bank Transfer') return 'Bank Transfer';
+      return 'Expense'; // Fallback if no payment method
+    }
+    if (type === 'income') return 'Donation';
+    if (type === 'transfer') {
+      if (subtype === 'withdrawal') return 'Withdrawal';
+      if (subtype === 'deposit') return 'Deposit';
+      return 'Transfer';
+    }
+    if (type === 'reversal') return 'Reversal';
+    return type || 'Unknown';
+  }
+  
+  function getTypeClass(type, subtype) {
+    if (type === 'expense') return 'danger';
+    if (type === 'income') return 'success';
+    if (type === 'transfer') return 'info';
+    if (type === 'reversal') return 'warning';
+    return 'secondary';
+  }
+  
+  // Load expected income (placeholder for now)
+  function loadExpectedIncome() {
+    // This feature can be implemented later
+    console.log('Expected income feature to be implemented');
+  }
+  
+  // Load categories for dropdowns
+  async function loadCategories() {
+    try {
+      const response = await window.callApi('/categories');
+      if (response.success) {
+        categories = response.data;
+        
+        // Populate dropdown
+        const categorySelect = document.getElementById('movement-category');
+        const options = '<option value="">Select category...</option>' + 
+          categories.map(cat => `<option value="${cat.name}">${cat.name}</option>`).join('');
+        
+        categorySelect.innerHTML = options;
+      }
+    } catch (error) {
+      console.error('Failed to load categories:', error);
+    }
+  }
+  
+  // Modal functions
+  function openMovementModal() {
+    document.getElementById('movement-modal').style.display = 'flex';
+    document.getElementById('movement-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('movement-amount').value = '';
+    document.getElementById('movement-description').value = '';
+    document.getElementById('movement-category').value = '';
+    document.getElementById('movement-account').value = 'cash';
+    // Don't pre-set to expense, let updateMovementForm set the first available option
+    updateMovementForm(false);
+  }
+  
+  function closeMovementModal() {
+    document.getElementById('movement-modal').style.display = 'none';
+  }
+  
+  function updateMovementForm(preserveType = true) {
+    const account = document.getElementById('movement-account').value;
+    const typeSelect = document.getElementById('movement-type');
+    const categoryGroup = document.getElementById('movement-category-group');
+    const paymentGroup = document.getElementById('movement-payment-group');
+    
+    // Store current selected value before updating options
+    const currentType = typeSelect.value;
+    
+    // Update type options based on account
+    if (account === 'cash') {
+      typeSelect.innerHTML = `
+        <option value="income">Cash Donation</option>
+        <option value="withdrawal">ATM Withdrawal (from Bank)</option>
+        <option value="deposit">Cash Deposit (to Bank)</option>
+      `;
+      paymentGroup.style.display = 'none';
+      document.getElementById('movement-payment').value = 'Cash';
+    } else {
+      typeSelect.innerHTML = `
+        <option value="income">Bank Donation</option>
+        <option value="withdrawal">Cash Withdrawal (to Cash)</option>
+        <option value="deposit">Cash Deposit (from Cash)</option>
+      `;
+      // Payment method is not needed for any bank movements now (no expenses)
+      paymentGroup.style.display = 'none';
+    }
+    
+    // Restore the selected value if it exists in the new options and preserveType is true
+    if (preserveType) {
+      const newOptions = Array.from(typeSelect.options).map(opt => opt.value);
+      if (newOptions.includes(currentType)) {
+        typeSelect.value = currentType;
+      }
+    }
+    
+    // Get the current type value (after potential restoration)
+    const type = typeSelect.value;
+    
+    // Show/hide category based on type - only show for donations (income)
+    if (type === 'income') {
+      categoryGroup.style.display = 'block';
+    } else {
+      categoryGroup.style.display = 'none';
+    }
+  }
+  
+  // Save movement
+  async function saveMovement() {
+    try {
+      const account = document.getElementById('movement-account').value;
+      const type = document.getElementById('movement-type').value;
+      const date = document.getElementById('movement-date').value;
+      const amount = parseFloat(document.getElementById('movement-amount').value);
+      const description = document.getElementById('movement-description').value;
+      const category = document.getElementById('movement-category').value;
+      
+      if (!date || !amount || !description) {
+        alert('Please fill in all required fields');
+        return;
+      }
+      
+      let transactionType, transactionData;
+      
+      if (type === 'expense') {
+        transactionType = 'expense';
+        transactionData = {
+          date,
+          amount,
+          description,
+          category,
+          paymentMethod: account === 'cash' ? 'Cash' : document.getElementById('movement-payment').value
+        };
+      } else if (type === 'income') {
+        transactionType = 'income';
+        transactionData = {
+          date,
+          amount,
+          description,
+          category,
+          account: account
+        };
+      } else if (type === 'withdrawal') {
+        transactionType = 'transfer';
+        transactionData = {
+          date,
+          amount,
+          description,
+          subtype: 'withdrawal'
+        };
+      } else if (type === 'deposit') {
+        transactionType = 'transfer';
+        transactionData = {
+          date,
+          amount,
+          description,
+          subtype: 'deposit'
+        };
+      }
+      
+      await window.TransactionService.create(transactionType, transactionData);
+      
+      closeMovementModal();
+      await loadSummary();
+      
+      // Reload appropriate tab
+      const currentTab = document.querySelector('.tab-nav-button.active').dataset.tab;
+      if (currentTab === 'movements') {
+        await loadCashMovements();
+      } else if (currentTab === 'bank') {
+        await loadBankMovements();
+      }
+      
+      console.log('Transaction saved successfully');
+      
+    } catch (error) {
+      console.error('Failed to save transaction:', error);
+      alert('Failed to save transaction: ' + error.message);
+    }
+  }
+  
+  // Action menu functions
+  function viewReceipt(transactionId) {
+    console.log('View receipt for:', transactionId);
+    // To be implemented: open receipt viewer
+  }
+  
+  function openActionMenu(transactionId) {
+    console.log('Open action menu for:', transactionId);
+    // To be implemented: show edit/delete menu
+  }
+  
+  // Placeholder functions for actions
+  function exportMovements() {
+    console.log('Export cash movements');
+    // To be implemented
+  }
+  
+  function exportBankMovements() {
+    console.log('Export bank movements');
+    // To be implemented
+  }
+  
+  function exportExpectedIncome() {
+    console.log('Export expected income');
+    // To be implemented
+  }
+  
+  function openExpectedIncomeModal() {
+    console.log('Open expected income modal');
+    // To be implemented
+  }
+  
+  // Initialize page function for SPA
+  window.initializeCashBankingPage = async function() {
+    console.log('Cash & Banking page initialized with clean backend');
+    
+    // Check if TransactionService is available
+    if (!window.TransactionService) {
+      console.error('Cash-Banking: TransactionService not loaded');
+      document.getElementById('cb-tbody').innerHTML = 
+        '<tr><td colspan="6" class="text-center text-danger">Service not available. Please refresh the page.</td></tr>';
+      return;
+    }
+    
+    // Load initial data
+    await loadCategories();
+    await loadSummary();
+    await loadCashMovements();
+    
+    // Setup event listeners
+    document.querySelectorAll('.tab-nav-button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const tab = e.currentTarget.dataset.tab;
+        switchTab(tab);
+      });
+    });
+    
+    // Cash filters
+    const cbQuick = document.getElementById('cb-quick');
+    if (cbQuick) {
+      cbQuick.addEventListener('change', () => {
+        updateDateFilters();
+        loadCashMovements();
+      });
+    }
+    
+    const cbStart = document.getElementById('cb-start');
+    if (cbStart) {
+      cbStart.addEventListener('change', () => {
+        currentFilters.startDate = cbStart.value;
+        loadCashMovements();
+      });
+    }
+    
+    const cbEnd = document.getElementById('cb-end');
+    if (cbEnd) {
+      cbEnd.addEventListener('change', () => {
+        currentFilters.endDate = cbEnd.value;
+        loadCashMovements();
+      });
+    }
+    
+    const cbTypeFilter = document.getElementById('cb-type-filter');
+    if (cbTypeFilter) {
+      cbTypeFilter.addEventListener('change', () => {
+        currentFilters.type = cbTypeFilter.value;
+        loadCashMovements();
+      });
+    }
+    
+    const cbSearch = document.getElementById('cb-search');
+    if (cbSearch) {
+      cbSearch.addEventListener('input', () => {
+        currentFilters.search = cbSearch.value;
+        loadCashMovements();
+      });
+    }
+    
+    // Bank filters
+    const bankQuick = document.getElementById('bank-quick');
+    if (bankQuick) {
+      bankQuick.addEventListener('change', () => {
+        loadBankMovements();
+      });
+    }
+    
+    const bankStart = document.getElementById('bank-start');
+    if (bankStart) {
+      bankStart.addEventListener('change', () => {
+        loadBankMovements();
+      });
+    }
+    
+    const bankEnd = document.getElementById('bank-end');
+    if (bankEnd) {
+      bankEnd.addEventListener('change', () => {
+        loadBankMovements();
+      });
+    }
+    
+    const bankTypeFilter = document.getElementById('bank-type-filter');
+    if (bankTypeFilter) {
+      bankTypeFilter.addEventListener('change', () => {
+        loadBankMovements();
+      });
+    }
+    
+    const bankSearch = document.getElementById('bank-search');
+    if (bankSearch) {
+      bankSearch.addEventListener('input', () => {
+        loadBankMovements();
+      });
+    }
+    
+    // Load more buttons
+    const cbMore = document.getElementById('cb-more');
+    if (cbMore) {
+      cbMore.addEventListener('click', () => {
+        cashCurrentPage++;
+        loadCashMovements(true);
+      });
+    }
+    
+    const bankMore = document.getElementById('bank-more');
+    if (bankMore) {
+      bankMore.addEventListener('click', () => {
+        bankCurrentPage++;
+        loadBankMovements(true);
+      });
+    }
+    
+    // Record movement button
+    const recordMovementBtn = document.getElementById('record-movement');
+    if (recordMovementBtn) {
+      recordMovementBtn.addEventListener('click', openMovementModal);
+    }
+    
+    // Initialize with 30 days of data
+    updateDateFilters();
+  };
+  
+  // Register the page initializer
+  window.registerPageInitializer('cash-banking', window.initializeCashBankingPage);
+  
+  // Expose functions needed by inline event handlers
+  window.closeMovementModal = closeMovementModal;
+  window.updateMovementForm = updateMovementForm;
+  window.saveMovement = saveMovement;
+  window.viewReceipt = viewReceipt;
+  window.openActionMenu = openActionMenu;
+  window.exportExpectedIncome = exportExpectedIncome;
+})(); // End IIFE
+</script>
+
+<style>
+.modal {
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.4);
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background-color: #fff;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-header {
+  padding: 20px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.close-modal {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-modal:hover {
+  color: #111827;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-footer {
+  padding: 20px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.badge-success { background: #d1fae5; color: #065f46; }
+.badge-danger { background: #fee2e2; color: #991b1b; }
+.badge-info { background: #dbeafe; color: #1e40af; }
+.badge-warning { background: #fed7aa; color: #92400e; }
+.badge-secondary { background: #f3f4f6; color: #4b5563; }
+
+.btn-ghost {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  font-size: 16px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.btn-ghost:hover {
+  opacity: 1;
+}
+
+/* Filter styles - clean white background */
+.filters {
+  background: #fff;
+  padding: 16px;
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.filters-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.filter-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-item .form-label {
+  margin-bottom: 4px;
+}
+
+.filter-item .form-control {
+  width: 100%;
+}
+</style>

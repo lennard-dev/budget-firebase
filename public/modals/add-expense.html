@@ -1,0 +1,1067 @@
+<div id="add-expense-modal" class="modal">
+  <div class="modal-content modal-expense-compact">
+    <div class="modal-header">
+      <h2>Add New Expense</h2>
+      <button class="modal-close" onclick="closeModal('add-expense-modal')" aria-label="Close">
+        <span>×</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="expense-form">
+        <!-- Row 1: Date and Receipt ID -->
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Date<span class="required">*</span></label>
+            <div class="input-with-icon">
+              <input type="date" id="expense-date" class="form-control" required>
+              <span class="input-icon">📅</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Transaction Number<span class="required">*</span></label>
+            <input type="text" id="expense-receipt" class="form-control" placeholder="2025-00001" required>
+          </div>
+        </div>
+
+        <!-- Row 2: Category and Subcategory -->
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Category<span class="required">*</span></label>
+            <select id="expense-category" class="form-control" required>
+              <option value="">Select Category</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Subcategory<span class="required">*</span></label>
+            <select id="expense-subcategory" class="form-control" required>
+              <option value="">Select Category First</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Row 3: Description (full width) -->
+        <div class="form-group">
+          <label class="form-label">Description<span class="required">*</span></label>
+          <input type="text" id="expense-description" class="form-control" placeholder="Enter expense description..." required>
+        </div>
+
+        <!-- Row 4: Amount (full width) -->
+        <div class="form-group">
+          <label class="form-label">Amount (€)<span class="required">*</span></label>
+          <input type="number" id="expense-amount" class="form-control" step="0.01" min="0.01" placeholder="0.00" required>
+        </div>
+
+        <!-- Row 5: Payment Method -->
+        <div class="form-group">
+          <label class="form-label">Payment Method<span class="required">*</span></label>
+          <div class="payment-method-buttons-compact">
+            <button type="button" class="payment-btn-compact" data-method="Cash">
+              <span class="payment-icon">💵</span>
+              <span>Cash</span>
+            </button>
+            <button type="button" class="payment-btn-compact" data-method="Card">
+              <span class="payment-icon">💳</span>
+              <span>Card</span>
+            </button>
+            <button type="button" class="payment-btn-compact" data-method="Bank Transfer">
+              <span class="payment-icon">🏦</span>
+              <span>Bank Transfer</span>
+            </button>
+          </div>
+          <input type="hidden" id="expense-payment" value="Cash">
+        </div>
+        
+        <!-- Row 5b: Transaction Status -->
+        <div class="form-group">
+          <label class="form-label">Transaction Status</label>
+          <div class="status-buttons-compact">
+            <button type="button" class="status-btn-compact selected" data-status="cleared">
+              <span class="status-icon">✅</span>
+              <span>Cleared</span>
+            </button>
+            <button type="button" class="status-btn-compact" data-status="pending">
+              <span class="status-icon">⏳</span>
+              <span>Pending</span>
+            </button>
+          </div>
+          <input type="hidden" id="expense-status" value="cleared">
+          <div id="pending-info" class="pending-info" style="display: none;">
+            <small>Expected to clear in 2-3 business days</small>
+          </div>
+        </div>
+
+        <!-- Row 6: Receipt Upload (compact) -->
+        <div class="form-group">
+          <label class="form-label">Receipt/Invoice Upload</label>
+          <div class="file-upload-compact">
+            <input type="file" id="receipt-files" class="file-input" accept="image/*,.pdf" multiple>
+            <button type="button" class="file-upload-btn" onclick="document.getElementById('receipt-files').click()">
+              📎 Choose Files
+            </button>
+            <span class="file-upload-text">or drag and drop files here</span>
+          </div>
+          <div id="receipt-preview" class="file-preview-compact"></div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('add-expense-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitModalExpense()">Add Expense</button>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Modal Base Styles */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  overflow: auto;
+}
+
+/* Compact Modal Container */
+.modal-expense-compact {
+  background-color: #fff;
+  margin: 5% auto;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+  max-width: 560px;
+  width: 90%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-expense-compact .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e8eaed;
+  flex-shrink: 0;
+}
+
+.modal-expense-compact .modal-header h2 {
+  font-size: 18px;
+  font-weight: 500;
+  color: #202124;
+  margin: 0;
+}
+
+.modal-expense-compact .modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #5f6368;
+  cursor: pointer;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.modal-expense-compact .modal-close:hover {
+  background-color: #f1f3f4;
+}
+
+.modal-expense-compact .modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+}
+
+/* Form Layout - Fixed width management */
+.modal-expense-compact form {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.modal-expense-compact .form-group {
+  margin-bottom: 14px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.form-row .form-group {
+  margin-bottom: 0;
+  min-width: 0; /* Prevent grid blowout */
+}
+
+.modal-expense-compact .form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #3c4043;
+  margin-bottom: 4px;
+}
+
+.modal-expense-compact .form-label .required {
+  color: #d93025;
+  margin-left: 2px;
+}
+
+.modal-expense-compact .form-control {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #202124;
+  background-color: #fff;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+  height: 36px; /* Fixed height for consistency */
+}
+
+.modal-expense-compact .form-control:focus {
+  outline: none;
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.1);
+}
+
+.modal-expense-compact select.form-control {
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%235f6368' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 32px;
+  appearance: none;
+}
+
+/* Input with icon - Fixed to prevent overflow */
+.input-with-icon {
+  position: relative;
+  width: 100%;
+}
+
+.input-with-icon .form-control {
+  padding-right: 36px;
+  width: 100%;
+}
+
+.input-with-icon .input-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  pointer-events: none;
+}
+
+/* Compact Payment Method Buttons */
+.payment-method-buttons-compact {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.payment-btn-compact {
+  background: #fff;
+  border: 2px solid #e8eaed;
+  border-radius: 6px;
+  padding: 8px 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #3c4043;
+  min-width: 0; /* Prevent overflow */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.payment-btn-compact:hover {
+  background-color: #f8f9fa;
+  border-color: #dadce0;
+}
+
+.payment-btn-compact.selected {
+  background-color: #e8f0fe;
+  border-color: #1a73e8;
+  color: #1a73e8;
+}
+
+.payment-btn-compact .payment-icon {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* Status Method Buttons */
+.status-buttons-compact {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.status-btn-compact {
+  background: #fff;
+  border: 2px solid #e8eaed;
+  border-radius: 6px;
+  padding: 8px 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #3c4043;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-btn-compact:hover {
+  background-color: #f8f9fa;
+  border-color: #dadce0;
+}
+
+.status-btn-compact.selected {
+  background-color: #e8f0fe;
+  border-color: #1a73e8;
+  color: #1a73e8;
+}
+
+.status-btn-compact .status-icon {
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.pending-info {
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: #fff3cd;
+  border-radius: 3px;
+  color: #856404;
+  font-size: 12px;
+}
+
+/* Compact File Upload */
+.file-upload-compact {
+  position: relative;
+  border: 2px dashed #dadce0;
+  border-radius: 6px;
+  padding: 12px;
+  background-color: #f8f9fa;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.2s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.file-upload-compact:hover {
+  border-color: #1a73e8;
+  background-color: #f1f3f4;
+}
+
+.file-upload-compact.dragover {
+  border-color: #1a73e8;
+  background-color: #e8f0fe;
+}
+
+.file-upload-btn {
+  background: #fff;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #1a73e8;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.file-upload-btn:hover {
+  background-color: #f8f9fa;
+  border-color: #1a73e8;
+}
+
+.file-upload-text {
+  font-size: 13px;
+  color: #5f6368;
+}
+
+.file-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Compact File Preview */
+.file-preview-compact {
+  margin-top: 8px;
+  max-height: 60px;
+  overflow-y: auto;
+  width: 100%;
+}
+
+.file-preview-compact .file-preview-item {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  background-color: #e8f0fe;
+  border-radius: 4px;
+  margin-right: 8px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  max-width: calc(50% - 4px);
+}
+
+.file-preview-compact .file-preview-name {
+  color: #1a73e8;
+  margin-right: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-preview-compact .file-preview-remove {
+  background: none;
+  border: none;
+  color: #5f6368;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.file-preview-compact .file-preview-remove:hover {
+  color: #d93025;
+}
+
+/* Modal Footer */
+.modal-expense-compact .modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 20px;
+  border-top: 1px solid #e8eaed;
+  flex-shrink: 0;
+}
+
+.modal-expense-compact .btn {
+  padding: 6px 20px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  white-space: nowrap;
+}
+
+.modal-expense-compact .btn-secondary {
+  background-color: #fff;
+  color: #5f6368;
+  border: 1px solid #dadce0;
+}
+
+.modal-expense-compact .btn-secondary:hover {
+  background-color: #f8f9fa;
+  border-color: #5f6368;
+}
+
+.modal-expense-compact .btn-primary {
+  background-color: #1a73e8;
+  color: #fff;
+}
+
+.modal-expense-compact .btn-primary:hover {
+  background-color: #1557b0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.modal-expense-compact .btn-primary:disabled {
+  background-color: #dadce0;
+  color: #80868b;
+  cursor: not-allowed;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .modal-expense-compact {
+    max-width: calc(100% - 20px);
+    max-height: calc(100vh - 20px);
+    margin: 10px auto;
+  }
+  
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  
+  .payment-method-buttons-compact {
+    grid-template-columns: 1fr;
+  }
+  
+  .payment-btn-compact {
+    justify-content: flex-start;
+    padding: 10px 12px;
+  }
+}
+</style>
+
+<script>
+(function(){
+  // Global variables for categories and subcategories
+  let categoriesData = [];
+  let subcategories = {};
+  
+  // Initialize modal functions - make them globally available
+  window.openExpenseModal = async function(expenseId){
+    console.log('Opening Expense Modal', expenseId ? `(Edit mode: ${expenseId})` : '(Add mode)');
+    
+    const modal = document.getElementById('add-expense-modal');
+    const modalTitle = modal.querySelector('.modal-header h2');
+    const submitBtn = modal.querySelector('.modal-footer .btn-primary');
+    
+    // Load categories first (if not already loaded)
+    if (categoriesData.length === 0) {
+      await loadCategories();
+    }
+    
+    // Clear any previous editing state
+    delete modal.dataset.editingId;
+    
+    if (expenseId) {
+      // EDIT MODE - Fetch and populate expense data
+      modalTitle.textContent = 'Edit Expense';
+      submitBtn.textContent = 'Update Expense';
+      modal.dataset.editingId = expenseId;
+      
+      try {
+        // Fetch the expense data using the GET endpoint
+        const response = await fetch(`/api/transactions/${expenseId}`, {
+          headers: {
+            'Authorization': `Bearer ${await firebase.auth().currentUser?.getIdToken()}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!response.ok) {
+          // Fallback: Try to find in the cached list
+          const transactions = await window.TransactionService.getList({ limit: 1000 });
+          const expense = transactions.find(t => t.id === expenseId);
+          
+          if (!expense) {
+            throw new Error('Expense not found');
+          }
+          
+          populateExpenseForm(expense);
+        } else {
+          const result = await response.json();
+          populateExpenseForm(result.data);
+        }
+      } catch (error) {
+        console.error('Error loading expense:', error);
+        alert('Failed to load expense data. Please try again.');
+        return;
+      }
+    } else {
+      // ADD MODE - Reset form with default values
+      modalTitle.textContent = 'Add New Expense';
+      submitBtn.textContent = 'Add Expense';
+      
+      const today = new Date().toISOString().slice(0,10);
+      document.getElementById('expense-date').value = today;
+      document.getElementById('expense-amount').value = '';
+      document.getElementById('expense-category').value = '';
+      document.getElementById('expense-subcategory').value = '';
+      document.getElementById('expense-payment').value = 'Cash';
+      document.getElementById('expense-description').value = '';
+      document.getElementById('expense-status').value = 'cleared';
+      
+      // Transaction number will be auto-generated by backend
+      document.getElementById('expense-receipt').value = '';
+      
+      // Reset file input
+      document.getElementById('receipt-files').value = '';
+      document.getElementById('receipt-preview').innerHTML = '';
+      
+      // Reset payment method selection
+      document.querySelectorAll('.payment-btn-compact').forEach(btn => {
+        btn.classList.remove('selected');
+        if (btn.dataset.method === 'Cash') {
+          btn.classList.add('selected');
+        }
+      });
+      
+      // Reset status selection
+      document.querySelectorAll('.status-btn-compact').forEach(btn => {
+        btn.classList.remove('selected');
+        if (btn.dataset.status === 'cleared') {
+          btn.classList.add('selected');
+        }
+      });
+      document.getElementById('pending-info').style.display = 'none';
+    }
+    
+    // Show modal
+    document.getElementById('add-expense-modal').style.display = 'block';
+    document.body.style.overflow = 'hidden';
+  }
+  
+  // Helper function to populate form with expense data
+  function populateExpenseForm(expense) {
+    console.log('Populating form with expense:', expense);
+    
+    // Basic fields
+    document.getElementById('expense-date').value = expense.date || '';
+    document.getElementById('expense-amount').value = Math.abs(expense.amount || 0);
+    document.getElementById('expense-description').value = expense.description || '';
+    // Use transaction_number field (backend provides this)
+    document.getElementById('expense-receipt').value = expense.transaction_number || expense.metadata?.transaction_number || '';
+    
+    // Category - set and trigger change event for subcategories
+    if (expense.category) {
+      document.getElementById('expense-category').value = expense.category;
+      // Trigger change event to load subcategories
+      const event = new Event('change', { bubbles: true });
+      document.getElementById('expense-category').dispatchEvent(event);
+      
+      // Set subcategory after a brief delay to allow options to load
+      setTimeout(() => {
+        if (expense.subcategory) {
+          document.getElementById('expense-subcategory').value = expense.subcategory;
+        }
+      }, 100);
+    }
+    
+    // Payment method - check both top-level and metadata
+    const paymentMethod = expense.paymentMethod || expense.metadata?.paymentMethod || 'Cash';
+    document.getElementById('expense-payment').value = paymentMethod;
+    
+    // Update payment method buttons
+    document.querySelectorAll('.payment-btn-compact').forEach(btn => {
+      btn.classList.remove('selected');
+      if (btn.dataset.method === paymentMethod) {
+        btn.classList.add('selected');
+      }
+    });
+    
+    // Status - check metadata for status
+    const status = expense.status || expense.metadata?.status || 'cleared';
+    document.getElementById('expense-status').value = status;
+    
+    // Update status buttons
+    document.querySelectorAll('.status-btn-compact').forEach(btn => {
+      btn.classList.remove('selected');
+      if (btn.dataset.status === status) {
+        btn.classList.add('selected');
+      }
+    });
+    
+    // Show/hide pending info
+    document.getElementById('pending-info').style.display = status === 'pending' ? 'block' : 'none';
+    
+    // Clear file preview (can't pre-populate file inputs for security reasons)
+    document.getElementById('receipt-files').value = '';
+    document.getElementById('receipt-preview').innerHTML = '';
+    
+    // If there are existing receipts, show a note
+    if (expense.transaction_number || expense.metadata?.transaction_number) {
+      const preview = document.getElementById('receipt-preview');
+      preview.innerHTML = '<div style="color: #5f6368; font-size: 12px;">📎 Existing receipt on file</div>';
+    }
+  }
+  
+  window.closeModal = function(id){ 
+    console.log('Closing modal:', id);
+    const el = document.getElementById(id); 
+    if(el) {
+      el.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+  }
+  
+  // Load categories from backend
+  async function loadCategories() {
+    try {
+      const response = await window.callApi('/categories');
+      if (response.success && response.data) {
+        categoriesData = response.data.filter(cat => cat.active !== false);
+        
+        // Build subcategories object
+        subcategories = {};
+        categoriesData.forEach(cat => {
+          if (cat.subcategories && cat.subcategories.length > 0) {
+            subcategories[cat.name] = cat.subcategories;
+          }
+        });
+        
+        // Populate category dropdown
+        const categorySelect = document.getElementById('expense-category');
+        if (categorySelect) {
+          // Keep the first "Select Category" option
+          categorySelect.innerHTML = '<option value="">Select Category</option>';
+          
+          // Add categories
+          categoriesData.forEach(cat => {
+            const option = document.createElement('option');
+            option.value = cat.name;
+            option.textContent = cat.name;
+            categorySelect.appendChild(option);
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load categories:', error);
+      // Fallback to default categories if loading fails
+      subcategories = {
+        'Operations': ['Administrative', 'Office Supplies', 'Communications'],
+        'Programs': ['Direct Aid', 'Education', 'Healthcare', 'Food Distribution'],
+        'Facilities': ['Rent', 'Utilities', 'Maintenance', 'Security'],
+        'Transportation': ['Fuel', 'Vehicle Maintenance', 'Public Transport'],
+        'Other': ['General', 'Miscellaneous']
+      };
+      
+      const categorySelect = document.getElementById('expense-category');
+      if (categorySelect) {
+        categorySelect.innerHTML = '<option value="">Select Category</option>';
+        Object.keys(subcategories).forEach(cat => {
+          const option = document.createElement('option');
+          option.value = cat;
+          option.textContent = cat;
+          categorySelect.appendChild(option);
+        });
+      }
+    }
+  }
+  
+  // Wait for DOM to be ready before attaching event listeners
+  function attachEventListeners() {
+    // Payment method button handling
+    document.querySelectorAll('.payment-btn-compact').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        document.querySelectorAll('.payment-btn-compact').forEach(b => b.classList.remove('selected'));
+        this.classList.add('selected');
+        document.getElementById('expense-payment').value = this.dataset.method;
+      });
+    });
+    
+    // Status button handling
+    document.querySelectorAll('.status-btn-compact').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        document.querySelectorAll('.status-btn-compact').forEach(b => b.classList.remove('selected'));
+        this.classList.add('selected');
+        document.getElementById('expense-status').value = this.dataset.status;
+        
+        // Show/hide pending info
+        const pendingInfo = document.getElementById('pending-info');
+        if (this.dataset.status === 'pending') {
+          pendingInfo.style.display = 'block';
+        } else {
+          pendingInfo.style.display = 'none';
+        }
+      });
+    });
+    
+    // Category/Subcategory handling - will be loaded dynamically
+    // Note: categoriesData and subcategories are defined in the parent scope
+    
+    const categorySelect = document.getElementById('expense-category');
+    if (categorySelect) {
+      categorySelect.addEventListener('change', function() {
+        const category = this.value;
+        const subcategorySelect = document.getElementById('expense-subcategory');
+        subcategorySelect.innerHTML = '<option value="">Select Subcategory</option>';
+        
+        if (category && subcategories[category]) {
+          subcategories[category].forEach(sub => {
+            const option = document.createElement('option');
+            // Handle both string and object formats
+            if (typeof sub === 'string') {
+              option.value = sub;
+              option.textContent = sub;
+            } else if (sub && typeof sub === 'object') {
+              option.value = sub.name || sub.id || '[Unknown]';
+              option.textContent = sub.name || sub.id || '[Unknown]';
+            }
+            subcategorySelect.appendChild(option);
+          });
+        }
+      });
+    }
+    
+    // File upload handling
+    const fileInput = document.getElementById('receipt-files');
+    const uploadArea = document.querySelector('.file-upload-compact');
+    const previewArea = document.getElementById('receipt-preview');
+    let selectedFiles = [];
+    
+    if (uploadArea) {
+      // Drag and drop
+      uploadArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.classList.add('dragover');
+      });
+      
+      uploadArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        this.classList.remove('dragover');
+      });
+      
+      uploadArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.classList.remove('dragover');
+        
+        const files = e.dataTransfer.files;
+        handleFiles(files);
+      });
+    }
+    
+    // File input change
+    if (fileInput) {
+      fileInput.addEventListener('change', function(e) {
+        handleFiles(this.files);
+      });
+    }
+    
+    function handleFiles(files) {
+      selectedFiles = Array.from(files);
+      updateFilePreview();
+    }
+    
+    function updateFilePreview() {
+      if (!previewArea) return;
+      previewArea.innerHTML = '';
+      
+      selectedFiles.forEach((file, index) => {
+        const item = document.createElement('span');
+        item.className = 'file-preview-item';
+        
+        const name = document.createElement('span');
+        name.className = 'file-preview-name';
+        name.textContent = file.name;
+        
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'file-preview-remove';
+        removeBtn.innerHTML = '×';
+        removeBtn.onclick = function() {
+          removeFile(index);
+        };
+        
+        item.appendChild(name);
+        item.appendChild(removeBtn);
+        previewArea.appendChild(item);
+      });
+    }
+    
+    function removeFile(index) {
+      selectedFiles.splice(index, 1);
+      updateFilePreview();
+      
+      // Reset file input
+      const dt = new DataTransfer();
+      selectedFiles.forEach(file => dt.items.add(file));
+      if (fileInput) fileInput.files = dt.files;
+    }
+    
+    // Store selectedFiles in window for submit function
+    window.addExpenseSelectedFiles = selectedFiles;
+  }
+  
+  // Submit expense
+  window.submitModalExpense = async function(){
+    const modal = document.getElementById('add-expense-modal');
+    const isEditMode = modal.dataset.editingId;
+    
+    console.log(isEditMode ? `Updating expense ${modal.dataset.editingId}` : 'Creating new expense');
+    
+    const form = document.getElementById('expense-form');
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+    
+    const submitBtn = event.target;
+    submitBtn.disabled = true;
+    submitBtn.textContent = isEditMode ? 'Updating...' : 'Adding...';
+    
+    try {
+      // Prepare the payload
+      let payload = {
+        date: document.getElementById('expense-date').value,
+        amount: Number(document.getElementById('expense-amount').value) || 0,
+        description: document.getElementById('expense-description').value || '',
+        category: document.getElementById('expense-category').value || 'Other',
+        subcategory: document.getElementById('expense-subcategory').value || 'General',
+        paymentMethod: document.getElementById('expense-payment').value || 'Cash', // Add at top level for TransactionService
+        metadata: {
+          paymentMethod: document.getElementById('expense-payment').value || 'Cash',
+          transaction_number: document.getElementById('expense-receipt').value.trim(),
+          status: document.getElementById('expense-status').value || 'cleared'
+        }
+      };
+      
+      // Determine account based on payment method
+      if (payload.metadata.paymentMethod === 'Cash') {
+        payload.account = 'cash';
+      } else {
+        payload.account = 'bank';
+      }
+      
+      if (isEditMode) {
+        // UPDATE MODE - Use PUT endpoint
+        console.log('Updating expense with payload:', payload);
+        
+        const response = await fetch(`/api/transactions/${modal.dataset.editingId}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${await firebase.auth().currentUser?.getIdToken()}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Update failed');
+        }
+        
+        const result = await response.json();
+        console.log('Expense updated:', result);
+        
+      } else {
+        // CREATE MODE - Use TransactionService
+        console.log('Creating expense with payload:', payload);
+        
+        await window.TransactionService.create('expense', payload);
+        console.log('Expense created successfully');
+      }
+      
+      // Upload receipt files if present (for both add and edit)
+      const filesInput = document.getElementById('receipt-files');
+      if (filesInput && filesInput.files && filesInput.files.length > 0) {
+        try {
+          const user = firebase.auth().currentUser;
+          const uid = user?.uid;
+          
+          if (window.firebase && window.firebase.storage) {
+            const storage = firebase.storage();
+            const transactionNumber = payload.metadata.transaction_number || modal.dataset.editingId || Date.now().toString();
+            const folder = `users/${uid}/receipts/${transactionNumber}`;
+            
+            for (const file of filesInput.files) {
+              const ref = storage.ref().child(`${folder}/${file.name}`);
+              await ref.put(file, { contentType: file.type });
+            }
+            console.log('Receipts uploaded successfully');
+          }
+        } catch (e) {
+          console.error('Receipt upload failed', e);
+          alert(`Expense ${isEditMode ? 'updated' : 'saved'}, but receipt upload failed. You can try again via Edit.`);
+        }
+      }
+      
+      // Clear editing state
+      delete modal.dataset.editingId;
+      window.closeModal('add-expense-modal');
+      
+      // Refresh the expenses page if we're on it
+      if (location.hash.replace('#','') === 'expenses') {
+        if (typeof window.initializeExpensesPage === 'function') {
+          try { 
+            await window.initializeExpensesPage(); 
+            console.log('Expenses page refreshed');
+          } catch(e) {
+            console.error('Failed to refresh expenses page:', e);
+          }
+        } else if (typeof window.load === 'function') {
+          // Fallback to load function if available
+          try {
+            await window.load();
+            console.log('Expenses list reloaded');
+          } catch(e) {
+            console.error('Failed to reload expenses:', e);
+          }
+        }
+      }
+      
+    } catch (error) {
+      console.error(`Failed to ${isEditMode ? 'update' : 'add'} expense:`, error);
+      alert(`Failed to ${isEditMode ? 'update' : 'add'} expense: ${error.message}`);
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = isEditMode ? 'Update Expense' : 'Add Expense';
+    }
+  }
+  
+  // Close modal on escape key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      const modal = document.getElementById('add-expense-modal');
+      if (modal && modal.style.display === 'block') {
+        closeModal('add-expense-modal');
+      }
+    }
+  });
+  
+  // Close modal on background click
+  const modal = document.getElementById('add-expense-modal');
+  if (modal) {
+    modal.addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeModal('add-expense-modal');
+      }
+    });
+  }
+  
+  // Attach event listeners when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      attachEventListeners();
+      loadCategories(); // Load categories on page load
+    });
+  } else {
+    // DOM is already ready
+    attachEventListeners();
+    loadCategories(); // Load categories on page load
+  }
+  
+  // Make sure the function is available globally
+  console.log('Add Expense Modal initialized, openExpenseModal available:', typeof window.openExpenseModal === 'function');
+})();
+</script>
