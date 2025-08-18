@@ -1,0 +1,16 @@
+{
+  "extends": ["eslint:recommended", "google"],
+  "parserOptions": {
+    "ecmaVersion": 2020,
+    "sourceType": "script"
+  },
+  "rules": {
+    "require-jsdoc": "off",
+    "max-len": ["error", 140],
+    "object-curly-spacing": "off",
+    "quotes": "off",
+    "indent": ["error", 2, {"SwitchCase": 1}]
+  }
+}
+
+

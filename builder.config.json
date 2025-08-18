@@ -1,0 +1,6 @@
+{
+  "command": "firebase emulators:start --only hosting",
+  "serverUrl": "http://localhost:5000",
+  "authenticateProxy": false,
+  "commitMode": "commits"
+}
