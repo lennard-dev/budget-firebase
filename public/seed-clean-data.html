@@ -108,6 +108,15 @@
             <button onclick="fixCashExpensesComprehensive();" style="background: #dc2626;">🚨 Fix Cash Expenses & Labels</button>
         </div>
         
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #ddd;">
+            <h3 style="margin-bottom: 10px;">📦 Category ID System</h3>
+            <button onclick="migrateCategories();" style="background: #1a73e8;">🔄 Migrate Categories to IDs</button>
+            <button onclick="standardizeIds();" style="background: #9c27b0;">🔧 Standardize ID Format</button>
+            <button onclick="fixDuplicateIds();" style="background: #e91e63;">🔨 Fix Duplicate IDs</button>
+            <button onclick="viewCategoriesWithIds();" style="background: #34a853;">👁️ View Categories with IDs</button>
+            <button onclick="testCategoryIds();" style="background: #fbbc04;">🧪 Test ID System</button>
+        </div>
+        
         <div id="log" class="log"></div>
     </div>
 
@@ -1256,6 +1265,245 @@
             
         } catch (error) {
             log(`Error in comprehensive fix: ${error.message}`, 'error');
+        }
+    }
+
+    // Category ID System Functions
+    async function standardizeIds() {
+        try {
+            log('=== Standardizing Category ID Format ===', 'info');
+            log('Converting all IDs to CAT-XXX and SUB-XXX format...', 'info');
+            
+            const user = firebase.auth().currentUser;
+            if (!user) {
+                throw new Error('Must be authenticated to standardize IDs');
+            }
+            
+            const token = await user.getIdToken();
+            const response = await fetch('/api/categories/standardize-ids', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                log(`Standardization complete!`, 'success');
+                log(`Updated: ${result.updated} categories`, 'success');
+                log(`Total: ${result.total} categories`, 'info');
+                
+                if (result.changes && result.changes.length > 0) {
+                    log('Changes made:', 'info');
+                    result.changes.forEach(change => {
+                        log(`  ${change}`, 'info');
+                    });
+                } else {
+                    log('All IDs were already in the correct format', 'info');
+                }
+            } else {
+                log(`Standardization failed: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            log(`Error during standardization: ${error.message}`, 'error');
+        }
+    }
+    
+    async function fixDuplicateIds() {
+        try {
+            log('=== Fixing Duplicate Category IDs ===', 'info');
+            
+            const user = firebase.auth().currentUser;
+            if (!user) {
+                throw new Error('Must be authenticated to fix duplicates');
+            }
+            
+            const token = await user.getIdToken();
+            const response = await fetch('/api/categories/fix-duplicates', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                log(`Fix complete!`, 'success');
+                log(`Duplicates found: ${result.duplicatesFound}`, 'info');
+                log(`Fixed: ${result.fixed}`, 'success');
+                
+                if (result.changes && result.changes.length > 0) {
+                    log('Changes made:', 'info');
+                    result.changes.forEach(change => {
+                        log(`  ${change}`, 'info');
+                    });
+                } else {
+                    log('No duplicate IDs found', 'success');
+                }
+            } else {
+                log(`Fix failed: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            log(`Error fixing duplicates: ${error.message}`, 'error');
+        }
+    }
+    
+    async function migrateCategories() {
+        try {
+            log('=== Starting Category Migration ===', 'info');
+            
+            const user = firebase.auth().currentUser;
+            if (!user) {
+                throw new Error('Must be authenticated to migrate categories');
+            }
+            
+            const token = await user.getIdToken();
+            const response = await fetch('/api/categories/migrate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                log(`Migration complete!`, 'success');
+                log(`Migrated: ${result.migrated} categories`, 'success');
+                log(`Skipped: ${result.skipped} (already had IDs)`, 'info');
+                log(`Total: ${result.total} categories`, 'info');
+            } else {
+                log(`Migration failed: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            log(`Error during migration: ${error.message}`, 'error');
+        }
+    }
+    
+    async function viewCategoriesWithIds() {
+        try {
+            log('=== Fetching Categories with IDs ===', 'info');
+            
+            const user = firebase.auth().currentUser;
+            if (!user) {
+                throw new Error('Must be authenticated to view categories');
+            }
+            
+            const token = await user.getIdToken();
+            const response = await fetch('/api/categories', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.success && result.data) {
+                log(`Found ${result.data.length} categories:`, 'success');
+                
+                result.data.forEach(cat => {
+                    const categoryId = cat.category_id || 'NO ID';
+                    const subcategoriesInfo = (cat.subcategories || []).map(sub => {
+                        if (typeof sub === 'object') {
+                            return `  - ${sub.name} (${sub.id || 'NO ID'})`;
+                        }
+                        return `  - ${sub} (NO ID)`;
+                    }).join('\n');
+                    
+                    log(`📁 ${cat.name} [${categoryId}]`, 'info');
+                    if (subcategoriesInfo) {
+                        log(subcategoriesInfo, 'info');
+                    }
+                });
+            } else {
+                log(`Failed to fetch categories: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            log(`Error fetching categories: ${error.message}`, 'error');
+        }
+    }
+    
+    async function testCategoryIds() {
+        try {
+            log('=== Testing Category ID System ===', 'info');
+            
+            const user = firebase.auth().currentUser;
+            if (!user) {
+                throw new Error('Must be authenticated to test');
+            }
+            
+            const token = await user.getIdToken();
+            
+            // First get categories
+            const catResponse = await fetch('/api/categories', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const categories = await catResponse.json();
+            
+            if (!categories.success || !categories.data.length) {
+                log('No categories found. Please seed categories first.', 'warning');
+                return;
+            }
+            
+            const testCategory = categories.data[0];
+            const testSubcategory = testCategory.subcategories?.[0];
+            
+            log(`Creating test transaction with category: ${testCategory.name}`, 'info');
+            
+            // Create a test transaction
+            const transactionData = {
+                date: new Date().toISOString().split('T')[0],
+                type: 'expense',
+                amount: 99.99,
+                description: 'Test transaction for Category ID system',
+                category: testCategory.name,
+                subcategory: typeof testSubcategory === 'object' ? testSubcategory.name : testSubcategory,
+                paymentMethod: 'Cash',
+                account: 'cash'
+            };
+            
+            const createResponse = await fetch('/api/transactions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(transactionData)
+            });
+            
+            const createResult = await createResponse.json();
+            
+            if (createResult.success) {
+                log(`Transaction created: ${createResult.data.id}`, 'success');
+                
+                // Fetch the transaction to see the IDs
+                const getResponse = await fetch(`/api/transactions/${createResult.data.id}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const transaction = await getResponse.json();
+                
+                if (transaction.success && transaction.data) {
+                    log('Transaction details:', 'info');
+                    log(`  Category: ${transaction.data.category} [${transaction.data.category_id || 'NO ID'}]`, 'info');
+                    log(`  Subcategory: ${transaction.data.subcategory} [${transaction.data.subcategory_id || 'NO ID'}]`, 'info');
+                    
+                    if (transaction.data.category_id) {
+                        log('✅ Category ID system is working!', 'success');
+                    } else {
+                        log('⚠️ Category IDs not being stored. Run migration first.', 'warning');
+                    }
+                }
+            } else {
+                log(`Failed to create test transaction: ${createResult.error}`, 'error');
+            }
+            
+        } catch (error) {
+            log(`Error testing ID system: ${error.message}`, 'error');
         }
     }
 

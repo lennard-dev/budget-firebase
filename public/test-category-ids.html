@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Category ID System</title>
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 30px;
+    }
+    .test-section {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    button {
+      background: #1a73e8;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+    button:hover {
+      background: #1557b0;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .result {
+      margin-top: 15px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .success {
+      border-left: 4px solid #4caf50;
+    }
+    .error {
+      border-left: 4px solid #f44336;
+    }
+    .info {
+      border-left: 4px solid #2196f3;
+    }
+  </style>
+</head>
+<body>
+  <h1>Category ID System Test</h1>
+  
+  <div class="test-section">
+    <h2>1. Migrate Existing Categories</h2>
+    <p>Add IDs to all existing categories and subcategories</p>
+    <button onclick="migrateCategories()">Run Migration</button>
+    <div id="migrate-result"></div>
+  </div>
+  
+  <div class="test-section">
+    <h2>2. View Categories with IDs</h2>
+    <p>Display all categories with their new IDs</p>
+    <button onclick="viewCategories()">View Categories</button>
+    <div id="categories-result"></div>
+  </div>
+  
+  <div class="test-section">
+    <h2>3. Create Test Transaction</h2>
+    <p>Create a transaction to verify IDs are stored</p>
+    <button onclick="createTestTransaction()">Create Transaction</button>
+    <div id="transaction-result"></div>
+  </div>
+  
+  <div class="test-section">
+    <h2>4. View Recent Transactions</h2>
+    <p>Check if transactions have category IDs</p>
+    <button onclick="viewTransactions()">View Transactions</button>
+    <div id="transactions-result"></div>
+  </div>
+
+  <!-- Firebase Scripts -->
+  <script defer src="/__/firebase/12.1.0/firebase-app-compat.js"></script>
+  <script defer src="/__/firebase/12.1.0/firebase-auth-compat.js"></script>
+  <script defer src="/__/firebase/12.1.0/firebase-firestore-compat.js"></script>
+  <script defer src="/__/firebase/init.js"></script>
+  
+  <script>
+    // Wait for Firebase to load, then define callApi
+    window.addEventListener('DOMContentLoaded', async () => {
+      // Define callApi function inline since api-client.js may not be loading correctly
+      window.callApi = async function(endpoint, options = {}) {
+        const user = firebase.auth().currentUser;
+        if (!user) {
+          throw new Error('User not authenticated');
+        }
+        
+        const token = await user.getIdToken();
+        const url = `/api${endpoint}`;
+        
+        const response = await fetch(url, {
+          ...options,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            ...options.headers
+          }
+        });
+        
+        return await response.json();
+      };
+    });
+  </script>
+  
+  <script>
+    // Helper to display results
+    function showResult(elementId, data, type = 'info') {
+      const element = document.getElementById(elementId);
+      element.className = `result ${type}`;
+      element.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    }
+    
+    // 1. Migrate categories
+    async function migrateCategories() {
+      try {
+        showResult('migrate-result', 'Running migration...', 'info');
+        
+        const response = await window.callApi('/categories/migrate', {
+          method: 'POST'
+        });
+        
+        if (response.success) {
+          showResult('migrate-result', response, 'success');
+        } else {
+          showResult('migrate-result', response, 'error');
+        }
+      } catch (error) {
+        showResult('migrate-result', `Error: ${error.message}`, 'error');
+      }
+    }
+    
+    // 2. View categories with IDs
+    async function viewCategories() {
+      try {
+        showResult('categories-result', 'Loading categories...', 'info');
+        
+        const response = await window.callApi('/categories');
+        
+        if (response.success) {
+          const formatted = response.data.map(cat => ({
+            name: cat.name,
+            category_id: cat.category_id || 'NOT SET',
+            subcategories: cat.subcategories?.map(sub => 
+              typeof sub === 'object' ? `${sub.name} (${sub.id || 'NO ID'})` : sub
+            ) || []
+          }));
+          showResult('categories-result', formatted, 'success');
+        } else {
+          showResult('categories-result', response, 'error');
+        }
+      } catch (error) {
+        showResult('categories-result', `Error: ${error.message}`, 'error');
+      }
+    }
+    
+    // 3. Create test transaction
+    async function createTestTransaction() {
+      try {
+        showResult('transaction-result', 'Creating test transaction...', 'info');
+        
+        // First get a category to use
+        const catResponse = await window.callApi('/categories');
+        if (!catResponse.success || !catResponse.data.length) {
+          throw new Error('No categories found');
+        }
+        
+        const category = catResponse.data[0];
+        const subcategory = category.subcategories?.[0];
+        
+        const transactionData = {
+          date: new Date().toISOString().split('T')[0],
+          type: 'expense',
+          amount: 25.50,
+          description: 'Test transaction with category IDs',
+          category: category.name,
+          subcategory: typeof subcategory === 'object' ? subcategory.name : subcategory,
+          paymentMethod: 'Cash',
+          account: 'cash'
+        };
+        
+        const response = await window.callApi('/transactions', {
+          method: 'POST',
+          body: JSON.stringify(transactionData)
+        });
+        
+        if (response.success) {
+          // Fetch the created transaction to see the IDs
+          const txnId = response.data.id;
+          const txnResponse = await window.callApi(`/transactions/${txnId}`);
+          
+          showResult('transaction-result', {
+            created: response.data,
+            transaction: txnResponse.data,
+            category_id: txnResponse.data?.category_id || 'NOT SET',
+            subcategory_id: txnResponse.data?.subcategory_id || 'NOT SET'
+          }, 'success');
+        } else {
+          showResult('transaction-result', response, 'error');
+        }
+      } catch (error) {
+        showResult('transaction-result', `Error: ${error.message}`, 'error');
+      }
+    }
+    
+    // 4. View recent transactions with IDs
+    async function viewTransactions() {
+      try {
+        showResult('transactions-result', 'Loading transactions...', 'info');
+        
+        const response = await window.callApi('/transactions?limit=5');
+        
+        if (response.success) {
+          const formatted = response.data.map(txn => ({
+            id: txn.id,
+            date: txn.date,
+            description: txn.description,
+            category: txn.category,
+            category_id: txn.category_id || 'NOT SET',
+            subcategory: txn.subcategory,
+            subcategory_id: txn.subcategory_id || 'NOT SET',
+            amount: txn.amount
+          }));
+          showResult('transactions-result', formatted, 'success');
+        } else {
+          showResult('transactions-result', response, 'error');
+        }
+      } catch (error) {
+        showResult('transactions-result', `Error: ${error.message}`, 'error');
+      }
+    }
+    
+    // Wait for auth
+    firebase.auth().onAuthStateChanged(user => {
+      if (!user) {
+        document.body.innerHTML = '<h1>Please log in first</h1><p>Go to the main app to log in.</p>';
+      }
+    });
+  </script>
+</body>
+</html>

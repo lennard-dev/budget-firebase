@@ -1,0 +1,25 @@
+# Commands to push your code to GitHub
+# Replace YOUR-USERNAME with your GitHub username
+# Replace YOUR-REPO-NAME with the repository name you chose
+
+# Add the remote repository (use ONE of these):
+# For HTTPS (easier, will ask for password):
+git remote add origin https://github.com/YOUR-USERNAME/YOUR-REPO-NAME.git
+
+# OR for SSH (if you have SSH keys set up):
+git remote add origin git@github.com:YOUR-USERNAME/YOUR-REPO-NAME.git
+
+# Push your code:
+git branch -M main
+git push -u origin main
+
+# If you get an authentication error with HTTPS, you may need to:
+# 1. Create a Personal Access Token on GitHub:
+#    - Go to Settings > Developer settings > Personal access tokens > Tokens (classic)
+#    - Generate new token with 'repo' permissions
+#    - Use the token as your password when prompted
+
+# Example with your username (replace repo name):
+git remote add origin https://github.com/lennard-dev/ngo-budget-firebase.git
+git branch -M main
+git push -u origin main
