@@ -15,6 +15,7 @@ const {onRequest} = require("firebase-functions/https");
 const admin = require("firebase-admin");
 const express = require("express");
 const cors = require("cors");
+const AccountsService = require("./accounts");
 
 // Initialize Firebase Admin
 setGlobalOptions({maxInstances: 10});
@@ -24,6 +25,7 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
+const accountsService = new AccountsService(db);
 
 // Simple auth middleware
 async function authenticateRequest(req, res, next) {
@@ -204,6 +206,8 @@ async function createTransaction(uid, transactionData) {
     subcategory: transactionData.subcategory || null,
     category_id: null, // Will be looked up if category provided
     subcategory_id: null, // Will be looked up if subcategory provided
+    account_code: null, // NEW: Professional account code
+    journal_entries: [], // NEW: Double-entry bookkeeping
     paymentMethod: transactionData.paymentMethod || null, // Store at top level for expenses
     metadata: transactionData.metadata || {},
   };
@@ -221,6 +225,20 @@ async function createTransaction(uid, transactionData) {
           txnData.subcategory_id = subcategoryId;
         }
       }
+    }
+  }
+  
+  // NEW: Look up professional account code
+  if (txnData.category) {
+    const accountCode = await accountsService.getAccountFromCategory(
+      uid, 
+      txnData.category, 
+      txnData.subcategory
+    );
+    if (accountCode) {
+      txnData.account_code = accountCode;
+      // Create journal entries for double-entry bookkeeping
+      txnData.journal_entries = accountsService.createJournalEntries(txnData);
     }
   }
   
@@ -1152,13 +1170,36 @@ apiRouter.post("/rebuild-ledger", async (req, res) => {
 // ==================== SETTINGS ENDPOINTS ====================
 // Keep these for app functionality
 
-// Categories
+// Categories - Now pulls from chart_of_accounts but returns frontend-compatible format
 apiRouter.get("/categories", async (req, res) => {
   const uid = req.user.uid;
-  const snap = await db.collection("users").doc(uid)
+  
+  try {
+    // Check if chart_of_accounts exists
+    const chartSnap = await db.collection("users").doc(uid)
+      .collection("chart_of_accounts")
+      .limit(1)
+      .get();
+    
+    if (!chartSnap.empty) {
+      // Use new chart_of_accounts
+      const categories = await accountsService.getCategoresFromAccounts(uid);
+      res.json({success: true, data: categories});
+    } else {
+      // Fall back to old categories collection
+      const snap = await db.collection("users").doc(uid)
+        .collection("categories").orderBy("name").get();
+      const data = snap.docs.map((d) => ({id: d.id, ...d.data()}));
+      res.json({success: true, data});
+    }
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+    // Fall back to old categories collection on error
+    const snap = await db.collection("users").doc(uid)
       .collection("categories").orderBy("name").get();
-  const data = snap.docs.map((d) => ({id: d.id, ...d.data()}));
-  res.json({success: true, data});
+    const data = snap.docs.map((d) => ({id: d.id, ...d.data()}));
+    res.json({success: true, data});
+  }
 });
 
 apiRouter.post("/categories", async (req, res) => {
@@ -1168,6 +1209,56 @@ apiRouter.post("/categories", async (req, res) => {
     return res.status(400).json({success: false, error: "Missing name or code"});
   }
   
+  // Check if chart_of_accounts exists
+  const chartCheck = await db.collection("users").doc(uid)
+    .collection("chart_of_accounts").limit(1).get();
+  
+  if (!chartCheck.empty) {
+    // Use new chart_of_accounts system
+    try {
+      const categoryId = id || await generateCategoryId(uid);
+      const baseAccountCode = 5000 + (parseInt(categoryId.replace('CAT-', '')) * 100);
+      
+      // Create/update category account
+      await accountsService.createAccount(uid, {
+        account_code: String(baseAccountCode),
+        account_name: name,
+        account_type: 'expense',
+        display_as: 'category',
+        category_name: name,
+        legacy_category_id: categoryId,
+        created_by: uid
+      });
+      
+      // Create/update subcategory accounts
+      let subIndex = 1;
+      for (const subName of subcategories) {
+        const subId = await generateSubcategoryId(uid);
+        const subAccountCode = baseAccountCode + subIndex;
+        
+        await accountsService.createAccount(uid, {
+          account_code: String(subAccountCode),
+          account_name: subName,
+          account_type: 'expense',
+          display_as: 'subcategory',
+          parent_code: String(baseAccountCode),
+          category_name: name,
+          subcategory_name: subName,
+          legacy_category_id: categoryId,
+          legacy_subcategory_id: subId,
+          created_by: uid
+        });
+        subIndex++;
+      }
+      
+      return res.json({success: true, id: categoryId, category_id: categoryId});
+    } catch (error) {
+      console.error("Error creating category in chart_of_accounts:", error);
+      return res.status(500).json({success: false, error: error.message});
+    }
+  }
+  
+  // Fall back to old categories collection
   const col = db.collection("users").doc(uid).collection("categories");
   
   if (id) {
@@ -1895,10 +1986,10 @@ apiRouter.get("/budgets", async (req, res) => {
       });
     }
     
-    // Get budget document for the specific month
+    // Get budget document for the specific month - use only budget_allocations collection
     const budgetId = `${year}-${String(month).padStart(2, '0')}`;
     const budgetDoc = await db.collection("users").doc(uid)
-        .collection("budgets").doc(budgetId).get();
+        .collection("budget_allocations").doc(budgetId).get();
     
     // Get actual spending for this month from transactions
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -1935,16 +2026,73 @@ apiRouter.get("/budgets", async (req, res) => {
     
     // Combine budget and spending data
     const budgetData = budgetDoc.exists ? budgetDoc.data() : {};
+    
+    // Handle different data structures from budget_allocations vs budgets
+    // budget_allocations has { categories: { categoryName: { subcategoryName: amount } } }
+    // budgets has { categories: { categoryName: { subcategoryName: amount } } } (same structure)
     const categoriesGrouped = {};
     let totalBudget = 0;
     let totalSpent = 0;
     
-    // Get all categories
-    const categoriesSnap = await db.collection("users").doc(uid)
-        .collection("categories").get();
+    // Get all categories from chart_of_accounts - dynamic approach
+    const chartSnap = await db.collection("users").doc(uid)
+        .collection("chart_of_accounts")
+        .where("display_as", "==", "category")
+        .get();
     
-    categoriesSnap.forEach(doc => {
-      const category = doc.data();
+    // If chart_of_accounts doesn't exist, fall back to categories collection
+    let categoriesData = [];
+    const categoryMap = new Map(); // Use Map to deduplicate by name - v2
+    if (!chartSnap.empty) {
+      // Use chart_of_accounts for dynamic categories
+      chartSnap.forEach(doc => {
+        const account = doc.data();
+        const categoryName = account.category_name || account.account_name;
+        // Only add if not already in map (deduplicate by name)
+        if (!categoryMap.has(categoryName)) {
+          const categoryData = {
+            name: categoryName,
+            code: account.account_code,
+            subcategories: []
+          };
+          categoryMap.set(categoryName, categoryData);
+          categoriesData.push(categoryData);
+        }
+      });
+      
+      // Get subcategories for each category
+      for (const cat of categoriesData) {
+        const subsSnap = await db.collection("users").doc(uid)
+            .collection("chart_of_accounts")
+            .where("display_as", "==", "subcategory")
+            .where("category_name", "==", cat.name)
+            .get();
+        
+        subsSnap.forEach(subDoc => {
+          const sub = subDoc.data();
+          cat.subcategories.push({
+            name: sub.subcategory_name || sub.account_name,
+            code: sub.account_code
+          });
+        });
+      }
+    } else {
+      // Fall back to categories collection
+      const categoriesSnap = await db.collection("users").doc(uid)
+          .collection("categories").get();
+      
+      categoriesSnap.forEach(doc => {
+        const category = doc.data();
+        categoriesData.push({
+          name: category.name,
+          code: category.category_id || category.id,
+          subcategories: category.subcategories || []
+        });
+      });
+    }
+    
+    // Process each category
+    categoriesData.forEach(category => {
       const categoryName = category.name;
       const budgetForCategory = budgetData.categories?.[categoryName] || {};
       const spendingForCategory = spendingByCategory[categoryName] || { total: 0, subcategories: {} };
@@ -3202,6 +3350,66 @@ apiRouter.put("/integrations", async (req, res) => {
   }
 });
 
+// ==================== CHART OF ACCOUNTS ENDPOINTS ====================
+
+// GET /chart-of-accounts - Get full chart of accounts tree
+apiRouter.get("/chart-of-accounts", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+    
+    const categories = await accountsService.getCategoresFromAccounts(uid);
+    return res.json({success: true, data: categories});
+  } catch (error) {
+    console.error("Error fetching chart of accounts:", error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+});
+
+// GET /chart-of-accounts/lookup - Lookup account by category/subcategory
+apiRouter.get("/chart-of-accounts/lookup", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+    
+    const { category, subcategory } = req.query;
+    if (!category) {
+      return res.status(400).json({success: false, error: "Category is required"});
+    }
+    
+    const accountCode = await accountsService.getAccountFromCategory(uid, category, subcategory);
+    if (!accountCode) {
+      return res.status(404).json({success: false, error: "Account not found"});
+    }
+    
+    const account = await accountsService.getAccount(uid, accountCode);
+    return res.json({success: true, data: account});
+  } catch (error) {
+    console.error("Error looking up account:", error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+});
+
+// POST /chart-of-accounts/setup - Initialize default chart
+apiRouter.post("/chart-of-accounts/setup", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+    
+    await accountsService.initializeDefaultChart(uid);
+    return res.json({success: true, message: "Chart of accounts initialized"});
+  } catch (error) {
+    console.error("Error setting up chart:", error);
+    return res.status(500).json({success: false, error: error.message});
+  }
+});
+
 // POST /export-data - Export all data
 apiRouter.post("/export-data", async (req, res) => {
   try {
@@ -3324,6 +3532,207 @@ apiRouter.post("/import-data", async (req, res) => {
       success: false,
       error: error.message,
     });
+  }
+});
+
+// ============================================
+// CHART OF ACCOUNTS API ENDPOINTS
+// ============================================
+
+// Get full chart of accounts
+apiRouter.get("/chart-of-accounts", async (req, res) => {
+  const uid = req.user.uid;
+  
+  try {
+    const chartSnap = await db.collection("users").doc(uid)
+      .collection("chart_of_accounts")
+      .orderBy("account_code")
+      .get();
+    
+    const accounts = chartSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    // Build hierarchy
+    const hierarchy = {
+      assets: [],
+      liabilities: [],
+      equity: [],
+      income: [],
+      expenses: []
+    };
+    
+    accounts.forEach(account => {
+      const type = account.account_type;
+      if (type === 'asset') hierarchy.assets.push(account);
+      else if (type === 'liability') hierarchy.liabilities.push(account);
+      else if (type === 'equity') hierarchy.equity.push(account);
+      else if (type === 'income') hierarchy.income.push(account);
+      else if (type === 'expense') hierarchy.expenses.push(account);
+    });
+    
+    res.json({
+      success: true,
+      data: accounts,
+      hierarchy: hierarchy,
+      total: accounts.length
+    });
+  } catch (error) {
+    console.error("Error fetching chart of accounts:", error);
+    res.status(500).json({success: false, error: error.message});
+  }
+});
+
+// Lookup account by category/subcategory
+apiRouter.post("/chart-of-accounts/lookup", async (req, res) => {
+  const uid = req.user.uid;
+  const { category, subcategory } = req.body;
+  
+  if (!category) {
+    return res.status(400).json({success: false, error: "Category is required"});
+  }
+  
+  try {
+    const accountCode = await accountsService.getAccountFromCategory(
+      uid,
+      category,
+      subcategory
+    );
+    
+    if (!accountCode) {
+      return res.status(404).json({
+        success: false,
+        error: "Account not found for category/subcategory"
+      });
+    }
+    
+    // Get full account details
+    const account = await accountsService.getAccount(uid, accountCode);
+    
+    res.json({
+      success: true,
+      account_code: accountCode,
+      account: account
+    });
+  } catch (error) {
+    console.error("Error looking up account:", error);
+    res.status(500).json({success: false, error: error.message});
+  }
+});
+
+// Setup complete chart (for initial setup or reset)
+apiRouter.post("/chart-of-accounts/setup", async (req, res) => {
+  const uid = req.user.uid;
+  const { clearExisting = false } = req.body;
+  
+  try {
+    // Check if already exists
+    const existingSnap = await db.collection("users").doc(uid)
+      .collection("chart_of_accounts")
+      .limit(1)
+      .get();
+    
+    if (!existingSnap.empty && !clearExisting) {
+      return res.status(409).json({
+        success: false,
+        error: "Chart of accounts already exists. Use clearExisting=true to reset."
+      });
+    }
+    
+    // Clear existing if requested
+    if (clearExisting && !existingSnap.empty) {
+      const batch = db.batch();
+      const allAccounts = await db.collection("users").doc(uid)
+        .collection("chart_of_accounts")
+        .get();
+      
+      allAccounts.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      
+      await batch.commit();
+    }
+    
+    // Initialize default chart
+    await accountsService.initializeDefaultChart(uid);
+    
+    res.json({
+      success: true,
+      message: "Chart of accounts initialized successfully"
+    });
+  } catch (error) {
+    console.error("Error setting up chart of accounts:", error);
+    res.status(500).json({success: false, error: error.message});
+  }
+});
+
+// Get account balances (for reporting)
+apiRouter.get("/chart-of-accounts/balances", async (req, res) => {
+  const uid = req.user.uid;
+  const { startDate, endDate } = req.query;
+  
+  try {
+    // Get all accounts
+    const accountsSnap = await db.collection("users").doc(uid)
+      .collection("chart_of_accounts")
+      .where("is_active", "==", true)
+      .orderBy("account_code")
+      .get();
+    
+    // Get current balances
+    const balancesSnap = await db.collection("users").doc(uid)
+      .collection("account_balances")
+      .get();
+    
+    const balanceMap = {};
+    balancesSnap.docs.forEach(doc => {
+      balanceMap[doc.id] = doc.data().current_balance || 0;
+    });
+    
+    // Build response with balances
+    const accountsWithBalances = accountsSnap.docs.map(doc => {
+      const account = doc.data();
+      return {
+        account_code: account.account_code,
+        account_name: account.account_name,
+        account_type: account.account_type,
+        display_as: account.display_as,
+        category_name: account.category_name,
+        subcategory_name: account.subcategory_name,
+        balance: balanceMap[account.account_code] || 0,
+        normal_balance: account.normal_balance,
+        budget_monthly: account.budget_monthly || 0,
+        budget_annual: account.budget_annual || 0
+      };
+    });
+    
+    // Calculate totals by type
+    const totals = {
+      assets: 0,
+      liabilities: 0,
+      equity: 0,
+      income: 0,
+      expenses: 0
+    };
+    
+    accountsWithBalances.forEach(account => {
+      if (account.account_type === 'asset') totals.assets += account.balance;
+      else if (account.account_type === 'liability') totals.liabilities += account.balance;
+      else if (account.account_type === 'equity') totals.equity += account.balance;
+      else if (account.account_type === 'income') totals.income += Math.abs(account.balance);
+      else if (account.account_type === 'expense') totals.expenses += Math.abs(account.balance);
+    });
+    
+    res.json({
+      success: true,
+      accounts: accountsWithBalances,
+      totals: totals,
+      net_income: totals.income - totals.expenses
+    });
+  } catch (error) {
+    console.error("Error fetching account balances:", error);
+    res.status(500).json({success: false, error: error.message});
   }
 });
 

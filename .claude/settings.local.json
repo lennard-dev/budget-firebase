@@ -59,7 +59,9 @@
       "Bash(cp:*)",
       "Bash(start chrome --new-window --auto-open-devtools-for-tabs \"https://budget-v01.web.app/#settings\")",
       "mcp__playwright__browser_press_key",
-      "mcp__playwright__browser_take_screenshot"
+      "mcp__playwright__browser_take_screenshot",
+      "Bash(start chrome:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

@@ -151,6 +151,52 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "chart_of_accounts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "display_as",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "account_code",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "chart_of_accounts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "parent_code",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "display_as",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "account_code",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "chart_of_accounts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "is_active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "account_code",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

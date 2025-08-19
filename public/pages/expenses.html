@@ -1444,7 +1444,16 @@ body,
     catSel.onchange = ()=>{
       subSel.innerHTML='<option value="">All</option>';
       const c = categories.find(x=>x.name===catSel.value);
-      if (c && c.subcategories){ c.subcategories.forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; subSel.appendChild(o); }); }
+      if (c && c.subcategories){ 
+        c.subcategories.forEach(s=>{ 
+          const o=document.createElement('option'); 
+          // Handle both string and object formats for subcategories
+          const subName = typeof s === 'string' ? s : (s.name || s.id || s);
+          o.value=subName; 
+          o.textContent=subName; 
+          subSel.appendChild(o); 
+        }); 
+      }
       applyFilters();
     }
   }

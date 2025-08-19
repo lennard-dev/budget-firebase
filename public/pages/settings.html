@@ -1044,12 +1044,13 @@
       let html = '';
       
       categories.forEach(cat => {
-        const categoryId = cat.category_id || cat.id;
-        const categoryAllocation = monthAllocations.categories?.[categoryId] || {};
-        const categoryBudgetValue = getBudgetValue(categoryAllocation);
+        // Use category name as the key for allocations (not ID)
+        const categoryName = cat.name;
+        const categoryAllocation = monthAllocations.categories?.[categoryName] || {};
+        const categoryBudgetValue = categoryAllocation['All'] || '';
         
         html += `
-          <div class="budget-category-card" data-category-id="${cat.id}" data-cat-id="${categoryId}">
+          <div class="budget-category-card" data-category-id="${cat.id}" data-cat-id="${cat.category_id || cat.id}">
             <div class="budget-category-header" onclick="toggleBudgetCategory('${cat.id}')">
               <div class="budget-category-expand" id="expand-${cat.id}">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1060,7 +1061,7 @@
               <div class="budget-category-info">
                 <div class="budget-category-name">
                   ${cat.name}
-                  <span class="budget-category-id">${categoryId}</span>
+                  <span class="budget-category-id">${cat.category_id || cat.id}</span>
                 </div>
                 ${cat.description ? `<div class="budget-category-description">${cat.description}</div>` : ''}
               </div>
@@ -1079,7 +1080,8 @@
                 <input type="number" 
                        class="budget-amount-input category-amount" 
                        id="cat-amount-${cat.id}"
-                       data-category-id="${categoryId}"
+                       data-category-name="${categoryName}"
+                       data-category-code="${cat.code || cat.category_id || cat.id}"
                        value="${categoryBudgetValue}"
                        placeholder="0"
                        min="0"
@@ -1089,7 +1091,7 @@
               </div>
             </div>
             
-            <div class="budget-category-content" id="content-${categoryId}">
+            <div class="budget-category-content" id="content-${cat.id}">
         `;
         
         // Add subcategories
@@ -1123,8 +1125,9 @@
               subcatName = 'Unnamed Subcategory';
             }
             
-            const subcatAllocation = categoryAllocation.subcategories?.[subcatId];
-            const subcatBudgetValue = getBudgetValue(subcatAllocation);
+            // Use subcategory name as the key for allocations
+            const subcatAllocation = categoryAllocation[subcatName];
+            const subcatBudgetValue = subcatAllocation || '';
             
             html += `
               <div class="budget-subcategory-item" data-subcat-id="${subcatId}">
@@ -1138,8 +1141,8 @@
                 <div></div> <!-- Empty column for alignment -->
                 <input type="number" 
                        class="budget-subcategory-amount subcategory-amount" 
-                       data-category-id="${cat.id}"
-                       data-subcategory-id="${subcatId}"
+                       data-category-name="${categoryName}"
+                       data-subcategory-name="${subcatName}"
                        value="${subcatBudgetValue}"
                        placeholder="0"
                        min="0"
@@ -2408,7 +2411,7 @@
   };
   
   // Copy from previous month
-  window.copyFromPreviousMonth = function() {
+  window.copyFromPreviousMonth = async function() {
     if (currentMonth === 0) {
       alert('This is the first month. No previous month to copy from.');
       return;
@@ -2418,72 +2421,155 @@
       return;
     }
     
-    // Load previous month's allocations
-    loadMonthBudget(currentMonth - 1);
-    setTimeout(() => {
-      // Switch back to current month but keep the values
-      loadMonthBudget(currentMonth);
-    }, 100);
+    try {
+      // Get previous month's key
+      const year = currentBudgetSettings.fiscalYear || new Date().getFullYear();
+      const startMonth = currentBudgetSettings.startMonth || 1;
+      const prevMonthIndex = currentMonth - 1;
+      const prevActualMonth = ((startMonth - 1 + prevMonthIndex) % 12) + 1;
+      const prevActualYear = year + Math.floor((startMonth - 1 + prevMonthIndex) / 12);
+      const prevMonthKey = `${prevActualYear}-${String(prevActualMonth).padStart(2, '0')}`;
+      
+      // Get previous month's allocations
+      const prevAllocations = currentAllocations[prevMonthKey] || {};
+      
+      if (!prevAllocations.categories || Object.keys(prevAllocations.categories).length === 0) {
+        alert('No budget data found for the previous month');
+        return;
+      }
+      
+      // Apply to current month's UI
+      applyAllocationsToUI(prevAllocations);
+      
+      alert('Budget allocations copied from previous month. Remember to save!');
+    } catch (error) {
+      console.error('Error copying from previous month:', error);
+      alert('Failed to copy from previous month');
+    }
   };
   
   // Copy to remaining months
-  window.copyToRemainingMonths = function() {
+  window.copyToRemainingMonths = async function() {
     if (!confirm('Copy current month allocations to all remaining months? This will overwrite their values.')) {
       return;
     }
     
-    // Get current allocations
-    const currentAllocations = gatherCurrentAllocations();
-    
-    // Apply to all remaining months
-    const totalMonths = document.querySelectorAll('.budget-month-tab').length;
-    for (let i = currentMonth + 1; i < totalMonths; i++) {
-      // Store allocations for each month
-      const year = currentBudgetSettings.fiscalYear || new Date().getFullYear();
-      const startMonth = currentBudgetSettings.startMonth || 1;
-      const actualMonth = ((startMonth - 1 + i) % 12) + 1;
-      const actualYear = year + Math.floor((startMonth - 1 + i) / 12);
-      const monthKey = `${actualYear}-${String(actualMonth).padStart(2, '0')}`;
+    try {
+      // Get current allocations from UI
+      const allocationsToApply = gatherCurrentAllocations();
       
-      currentAllocations[monthKey] = currentAllocations;
+      if (!allocationsToApply.categories || Object.keys(allocationsToApply.categories).length === 0) {
+        alert('No budget allocations to copy');
+        return;
+      }
+      
+      // Apply to all remaining months
+      const totalMonths = document.querySelectorAll('.budget-month-tab').length;
+      let savedCount = 0;
+      
+      for (let i = currentMonth + 1; i < totalMonths; i++) {
+        // Calculate month key
+        const year = currentBudgetSettings.fiscalYear || new Date().getFullYear();
+        const startMonth = currentBudgetSettings.startMonth || 1;
+        const actualMonth = ((startMonth - 1 + i) % 12) + 1;
+        const actualYear = year + Math.floor((startMonth - 1 + i) / 12);
+        const monthKey = `${actualYear}-${String(actualMonth).padStart(2, '0')}`;
+        
+        // Save to backend immediately
+        const response = await window.callApi('/budget-allocations', {
+          method: 'PUT',
+          body: JSON.stringify({
+            monthKey,
+            allocations: allocationsToApply
+          })
+        });
+        
+        if (response.success) {
+          // Store in local cache
+          currentAllocations[monthKey] = allocationsToApply;
+          savedCount++;
+        }
+      }
+      
+      if (savedCount > 0) {
+        alert(`Budget allocations copied to ${savedCount} remaining months`);
+      } else {
+        alert('Failed to copy allocations to remaining months');
+      }
+    } catch (error) {
+      console.error('Error copying to remaining months:', error);
+      alert('Failed to copy to remaining months');
     }
-    
-    alert('Budget allocations copied to all remaining months');
   };
   
-  // Gather current allocations from UI
+  // Apply allocations to UI
+  function applyAllocationsToUI(allocations) {
+    if (!allocations || !allocations.categories) return;
+    
+    document.querySelectorAll('.category-item').forEach(item => {
+      const categoryName = item.querySelector('.category-name').textContent.trim();
+      const categoryData = allocations.categories[categoryName];
+      
+      if (categoryData) {
+        // Set category-level budget if exists
+        const categoryInput = item.querySelector('.category-budget-input');
+        if (categoryInput && categoryData['All']) {
+          categoryInput.value = categoryData['All'] || 0;
+        }
+        
+        // Set subcategory budgets
+        item.querySelectorAll('.subcategory-row').forEach(subRow => {
+          const subName = subRow.querySelector('.subcategory-name').textContent.trim();
+          const subInput = subRow.querySelector('.subcategory-budget-input');
+          if (subInput && categoryData[subName] !== undefined) {
+            subInput.value = categoryData[subName] || 0;
+          }
+        });
+      }
+    });
+    
+    updateBudgetTotals();
+  }
+  
+  // Gather current allocations from UI - dynamic version
   function gatherCurrentAllocations() {
     const allocations = {
       total: 0,
       categories: {}
     };
     
-    document.querySelectorAll('.budget-category-card').forEach(card => {
-      const categoryId = card.dataset.catId;
-      const categoryInput = card.querySelector('.category-amount');
-      const categoryAmount = parseFloat(categoryInput?.value) || 0;
-      
-      if (categoryId && categoryAmount > 0) {
-        allocations.categories[categoryId] = {
-          budget: categoryAmount,
-          name: card.querySelector('.budget-category-name')?.textContent.trim(),
-          subcategories: {}
-        };
+    // Get all category-level budget inputs
+    const categoryInputs = document.querySelectorAll('.category-amount');
+    categoryInputs.forEach(input => {
+      const value = parseFloat(input.value) || 0;
+      if (value > 0) {
+        const categoryName = input.getAttribute('data-category-name');
         
-        allocations.total += categoryAmount;
-        
-        // Gather subcategory allocations
-        card.querySelectorAll('.budget-subcategory-item').forEach(subItem => {
-          const subcatId = subItem.dataset.subcatId;
-          const subcatAmount = parseFloat(subItem.querySelector('.subcategory-amount')?.value) || 0;
-          
-          if (subcatId && subcatAmount > 0) {
-            allocations.categories[categoryId].subcategories[subcatId] = {
-              budget: subcatAmount,
-              name: subItem.querySelector('.budget-subcategory-name')?.textContent.trim()
-            };
+        if (categoryName) {
+          if (!allocations.categories[categoryName]) {
+            allocations.categories[categoryName] = {};
           }
-        });
+          allocations.categories[categoryName]['All'] = value;
+          allocations.total += value;
+        }
+      }
+    });
+    
+    // Get all subcategory-level budget inputs
+    const subcategoryInputs = document.querySelectorAll('.subcategory-amount');
+    subcategoryInputs.forEach(input => {
+      const value = parseFloat(input.value) || 0;
+      if (value > 0) {
+        const categoryName = input.getAttribute('data-category-name');
+        const subcategoryName = input.getAttribute('data-subcategory-name');
+        
+        if (categoryName && subcategoryName) {
+          if (!allocations.categories[categoryName]) {
+            allocations.categories[categoryName] = {};
+          }
+          allocations.categories[categoryName][subcategoryName] = value;
+          allocations.total += value;
+        }
       }
     });
     

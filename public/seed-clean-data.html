@@ -118,6 +118,13 @@
         </div>
         
         <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #ddd;">
+            <h3 style="margin-bottom: 10px;">📊 Professional Chart of Accounts</h3>
+            <button onclick="setupCompleteChart();" style="background: #4f46e5;">✨ Setup Complete NGO Chart</button>
+            <button onclick="viewChartOfAccounts();" style="background: #10b981;">👁️ View Chart of Accounts</button>
+            <button onclick="clearChartOfAccounts();" style="background: #ef4444;">🗑️ Clear Chart of Accounts</button>
+        </div>
+        
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #ddd;">
             <h3 style="margin-bottom: 10px;">👥 User Management</h3>
             <button onclick="seedTestUsers();" style="background: #8B5CF6;">👥 Seed Test Users</button>
             <button onclick="clearAllUsers();" style="background: #DC2626;">🗑️ Clear All Users</button>
@@ -1877,6 +1884,229 @@
             }
         } catch (error) {
             log(`Error clearing activity logs: ${error.message}`, 'error');
+        }
+    }
+
+    // =============================================
+    // CHART OF ACCOUNTS FUNCTIONS
+    // =============================================
+    
+    // Complete NGO Chart of Accounts
+    const ngoChartOfAccounts = [
+        // Hidden Backend Accounts
+        { code: '1000', name: 'Cash on Hand', type: 'asset', displayAs: 'hidden' },
+        { code: '1100', name: 'Bank Account', type: 'asset', displayAs: 'hidden' },
+        { code: '4000', name: 'Income', type: 'income', displayAs: 'hidden' },
+        { code: '4010', name: 'Donations', type: 'income', displayAs: 'hidden', parent: '4000' },
+        { code: '4020', name: 'Grants', type: 'income', displayAs: 'hidden', parent: '4000' },
+        
+        // Administration (5100)
+        { code: '5100', name: 'Administration', type: 'expense', displayAs: 'category', categoryName: 'Administration', legacyCategoryId: 'CAT-001' },
+        { code: '5101', name: 'Safety Engineer', type: 'expense', displayAs: 'subcategory', categoryName: 'Administration', subcategoryName: 'Safety Engineer', parent: '5100', legacyCategoryId: 'CAT-001', legacySubcategoryId: 'SUB-001' },
+        { code: '5102', name: 'Donation', type: 'expense', displayAs: 'subcategory', categoryName: 'Administration', subcategoryName: 'Donation', parent: '5100', legacyCategoryId: 'CAT-001', legacySubcategoryId: 'SUB-002' },
+        { code: '5103', name: 'Taxes', type: 'expense', displayAs: 'subcategory', categoryName: 'Administration', subcategoryName: 'Taxes', parent: '5100', legacyCategoryId: 'CAT-001', legacySubcategoryId: 'SUB-003' },
+        { code: '5104', name: 'Accountant', type: 'expense', displayAs: 'subcategory', categoryName: 'Administration', subcategoryName: 'Accountant', parent: '5100', legacyCategoryId: 'CAT-001', legacySubcategoryId: 'SUB-004' },
+        { code: '5105', name: 'Bank Fees', type: 'expense', displayAs: 'subcategory', categoryName: 'Administration', subcategoryName: 'Bank Fees', parent: '5100', legacyCategoryId: 'CAT-001', legacySubcategoryId: 'SUB-005' },
+        { code: '5106', name: 'Other', type: 'expense', displayAs: 'subcategory', categoryName: 'Administration', subcategoryName: 'Other', parent: '5100', legacyCategoryId: 'CAT-001', legacySubcategoryId: 'SUB-006' },
+        
+        // Beneficiary Activities (5200)
+        { code: '5200', name: 'Beneficiary Activities', type: 'expense', displayAs: 'category', categoryName: 'Beneficiary Activities', legacyCategoryId: 'CAT-002' },
+        { code: '5201', name: 'Breakfast', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Breakfast', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-007' },
+        { code: '5202', name: 'Café', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Café', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-008' },
+        { code: '5203', name: 'Child Friendly Space', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Child Friendly Space', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-009' },
+        { code: '5204', name: 'Events', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Events', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-010' },
+        { code: '5205', name: 'Lunch', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Lunch', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-011' },
+        { code: '5206', name: 'Donations', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Donations', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-012' },
+        { code: '5207', name: 'Paréa Club', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Paréa Club', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-013' },
+        { code: '5208', name: 'Women Space', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Women Space', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-014' },
+        
+        // Facility (5300)
+        { code: '5300', name: 'Facility', type: 'expense', displayAs: 'category', categoryName: 'Facility', legacyCategoryId: 'CAT-003' },
+        { code: '5301', name: 'Rent', type: 'expense', displayAs: 'subcategory', categoryName: 'Facility', subcategoryName: 'Rent', parent: '5300', legacyCategoryId: 'CAT-003', legacySubcategoryId: 'SUB-015' },
+        { code: '5302', name: 'Electricity', type: 'expense', displayAs: 'subcategory', categoryName: 'Facility', subcategoryName: 'Electricity', parent: '5300', legacyCategoryId: 'CAT-003', legacySubcategoryId: 'SUB-016' },
+        { code: '5303', name: 'Insurance', type: 'expense', displayAs: 'subcategory', categoryName: 'Facility', subcategoryName: 'Insurance', parent: '5300', legacyCategoryId: 'CAT-003', legacySubcategoryId: 'SUB-017' },
+        { code: '5304', name: 'Security', type: 'expense', displayAs: 'subcategory', categoryName: 'Facility', subcategoryName: 'Security', parent: '5300', legacyCategoryId: 'CAT-003', legacySubcategoryId: 'SUB-018' },
+        { code: '5305', name: 'Water', type: 'expense', displayAs: 'subcategory', categoryName: 'Facility', subcategoryName: 'Water', parent: '5300', legacyCategoryId: 'CAT-003', legacySubcategoryId: 'SUB-019' },
+        { code: '5306', name: 'WiFi', type: 'expense', displayAs: 'subcategory', categoryName: 'Facility', subcategoryName: 'WiFi', parent: '5300', legacyCategoryId: 'CAT-003', legacySubcategoryId: 'SUB-020' },
+        
+        // Construction & Maintenance (5400)
+        { code: '5400', name: 'Construction & Maintenance', type: 'expense', displayAs: 'category', categoryName: 'Construction & Maintenance', legacyCategoryId: 'CAT-004' },
+        { code: '5401', name: 'Cleaning Supplies', type: 'expense', displayAs: 'subcategory', categoryName: 'Construction & Maintenance', subcategoryName: 'Cleaning Supplies', parent: '5400', legacyCategoryId: 'CAT-004', legacySubcategoryId: 'SUB-021' },
+        { code: '5402', name: 'Cleaning Company', type: 'expense', displayAs: 'subcategory', categoryName: 'Construction & Maintenance', subcategoryName: 'Cleaning Company', parent: '5400', legacyCategoryId: 'CAT-004', legacySubcategoryId: 'SUB-022' },
+        { code: '5403', name: 'Waste Water', type: 'expense', displayAs: 'subcategory', categoryName: 'Construction & Maintenance', subcategoryName: 'Waste Water', parent: '5400', legacyCategoryId: 'CAT-004', legacySubcategoryId: 'SUB-023' },
+        { code: '5404', name: 'Materials & Equipment', type: 'expense', displayAs: 'subcategory', categoryName: 'Construction & Maintenance', subcategoryName: 'Materials & Equipment', parent: '5400', legacyCategoryId: 'CAT-004', legacySubcategoryId: 'SUB-024' },
+        { code: '5405', name: 'External Contractor', type: 'expense', displayAs: 'subcategory', categoryName: 'Construction & Maintenance', subcategoryName: 'External Contractor', parent: '5400', legacyCategoryId: 'CAT-004', legacySubcategoryId: 'SUB-025' },
+        { code: '5406', name: 'Minor Maintenance', type: 'expense', displayAs: 'subcategory', categoryName: 'Construction & Maintenance', subcategoryName: 'Minor Maintenance', parent: '5400', legacyCategoryId: 'CAT-004', legacySubcategoryId: 'SUB-026' },
+        
+        // Office (5500)
+        { code: '5500', name: 'Office', type: 'expense', displayAs: 'category', categoryName: 'Office', legacyCategoryId: 'CAT-005' },
+        { code: '5501', name: 'Printing', type: 'expense', displayAs: 'subcategory', categoryName: 'Office', subcategoryName: 'Printing', parent: '5500', legacyCategoryId: 'CAT-005', legacySubcategoryId: 'SUB-027' },
+        { code: '5502', name: 'Stationery', type: 'expense', displayAs: 'subcategory', categoryName: 'Office', subcategoryName: 'Stationery', parent: '5500', legacyCategoryId: 'CAT-005', legacySubcategoryId: 'SUB-028' },
+        
+        // Transportation (5600)
+        { code: '5600', name: 'Transportation', type: 'expense', displayAs: 'category', categoryName: 'Transportation', legacyCategoryId: 'CAT-006' },
+        { code: '5601', name: 'Car Rental', type: 'expense', displayAs: 'subcategory', categoryName: 'Transportation', subcategoryName: 'Car Rental', parent: '5600', legacyCategoryId: 'CAT-006', legacySubcategoryId: 'SUB-029' },
+        { code: '5602', name: 'Fuel', type: 'expense', displayAs: 'subcategory', categoryName: 'Transportation', subcategoryName: 'Fuel', parent: '5600', legacyCategoryId: 'CAT-006', legacySubcategoryId: 'SUB-030' },
+        { code: '5603', name: 'Bus Service', type: 'expense', displayAs: 'subcategory', categoryName: 'Transportation', subcategoryName: 'Bus Service', parent: '5600', legacyCategoryId: 'CAT-006', legacySubcategoryId: 'SUB-031' },
+        
+        // Volunteer Benefits (5700)
+        { code: '5700', name: 'Volunteer Benefits', type: 'expense', displayAs: 'category', categoryName: 'Volunteer Benefits', legacyCategoryId: 'CAT-007' },
+        { code: '5701', name: 'Community Volunteer Benefits', type: 'expense', displayAs: 'subcategory', categoryName: 'Volunteer Benefits', subcategoryName: 'Community Volunteer Benefits', parent: '5700', legacyCategoryId: 'CAT-007', legacySubcategoryId: 'SUB-032' },
+        { code: '5702', name: 'Emergency Support', type: 'expense', displayAs: 'subcategory', categoryName: 'Volunteer Benefits', subcategoryName: 'Emergency Support', parent: '5700', legacyCategoryId: 'CAT-007', legacySubcategoryId: 'SUB-033' },
+        { code: '5703', name: 'Phone Credit', type: 'expense', displayAs: 'subcategory', categoryName: 'Volunteer Benefits', subcategoryName: 'Phone Credit', parent: '5700', legacyCategoryId: 'CAT-007', legacySubcategoryId: 'SUB-034' },
+        
+        // Staff (5800)
+        { code: '5800', name: 'Staff', type: 'expense', displayAs: 'category', categoryName: 'Staff', legacyCategoryId: 'CAT-008' },
+        { code: '5801', name: 'Payroll', type: 'expense', displayAs: 'subcategory', categoryName: 'Staff', subcategoryName: 'Payroll', parent: '5800', legacyCategoryId: 'CAT-008', legacySubcategoryId: 'SUB-035' },
+        { code: '5802', name: 'Maternity Leave', type: 'expense', displayAs: 'subcategory', categoryName: 'Staff', subcategoryName: 'Maternity Leave', parent: '5800', legacyCategoryId: 'CAT-008', legacySubcategoryId: 'SUB-036' },
+        { code: '5803', name: 'Stipend', type: 'expense', displayAs: 'subcategory', categoryName: 'Staff', subcategoryName: 'Stipend', parent: '5800', legacyCategoryId: 'CAT-008', legacySubcategoryId: 'SUB-037' },
+        { code: '5804', name: 'Taxes', type: 'expense', displayAs: 'subcategory', categoryName: 'Staff', subcategoryName: 'Taxes', parent: '5800', legacyCategoryId: 'CAT-008', legacySubcategoryId: 'SUB-038' },
+        { code: '5805', name: 'Vouchers', type: 'expense', displayAs: 'subcategory', categoryName: 'Staff', subcategoryName: 'Vouchers', parent: '5800', legacyCategoryId: 'CAT-008', legacySubcategoryId: 'SUB-039' },
+        
+        // Other (5900)
+        { code: '5900', name: 'Other', type: 'expense', displayAs: 'category', categoryName: 'Other', legacyCategoryId: 'CAT-009' },
+        { code: '5901', name: 'Extrabudgetary Expense', type: 'expense', displayAs: 'subcategory', categoryName: 'Other', subcategoryName: 'Extrabudgetary Expense', parent: '5900', legacyCategoryId: 'CAT-009', legacySubcategoryId: 'SUB-040' },
+        { code: '5902', name: 'Bank Fees', type: 'expense', displayAs: 'subcategory', categoryName: 'Other', subcategoryName: 'Bank Fees', parent: '5900', legacyCategoryId: 'CAT-009', legacySubcategoryId: 'SUB-041' }
+    ];
+    
+    // Setup complete NGO chart of accounts
+    async function setupCompleteChart() {
+        try {
+            log('=== SETTING UP COMPLETE NGO CHART OF ACCOUNTS ===', 'info');
+            
+            const user = firebase.auth().currentUser;
+            if (!user) {
+                log('Not authenticated!', 'error');
+                return;
+            }
+            
+            const db = firebase.firestore();
+            const batch = db.batch();
+            let count = 0;
+            
+            for (const account of ngoChartOfAccounts) {
+                const accountDoc = {
+                    account_code: account.code,
+                    account_name: account.name,
+                    account_type: account.type,
+                    display_as: account.displayAs || 'hidden',
+                    level: account.parent ? 2 : (account.displayAs === 'category' ? 1 : 0),
+                    parent_code: account.parent || null,
+                    
+                    // Frontend compatibility
+                    category_name: account.categoryName || null,
+                    subcategory_name: account.subcategoryName || null,
+                    legacy_category_id: account.legacyCategoryId || null,
+                    legacy_subcategory_id: account.legacySubcategoryId || null,
+                    
+                    // Accounting fields
+                    normal_balance: account.type === 'expense' || account.type === 'asset' ? 'debit' : 'credit',
+                    financial_statement: account.type === 'asset' ? 'balance_sheet' : 'income_statement',
+                    is_active: true,
+                    system_account: account.displayAs === 'hidden',
+                    
+                    // Metadata
+                    created_at: firebase.firestore.FieldValue.serverTimestamp(),
+                    created_by: 'system',
+                    updated_at: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                
+                const docRef = db.collection('users').doc(user.uid)
+                    .collection('chart_of_accounts').doc(account.code);
+                batch.set(docRef, accountDoc);
+                count++;
+                
+                if (account.displayAs !== 'hidden') {
+                    log(`Adding: ${account.categoryName || account.name} ${account.subcategoryName ? '> ' + account.subcategoryName : ''}`, 'info');
+                }
+            }
+            
+            await batch.commit();
+            
+            const categoryCount = ngoChartOfAccounts.filter(a => a.displayAs === 'category').length;
+            const subcategoryCount = ngoChartOfAccounts.filter(a => a.displayAs === 'subcategory').length;
+            const hiddenCount = ngoChartOfAccounts.filter(a => a.displayAs === 'hidden').length;
+            
+            log(`✅ Successfully created ${count} accounts:`, 'success');
+            log(`   • ${categoryCount} Categories`, 'success');
+            log(`   • ${subcategoryCount} Subcategories`, 'success');
+            log(`   • ${hiddenCount} System Accounts`, 'success');
+            
+        } catch (error) {
+            log(`❌ Error setting up chart: ${error.message}`, 'error');
+        }
+    }
+    
+    // View chart of accounts
+    async function viewChartOfAccounts() {
+        try {
+            log('=== VIEWING CHART OF ACCOUNTS ===', 'info');
+            
+            const user = firebase.auth().currentUser;
+            if (!user) {
+                log('Not authenticated!', 'error');
+                return;
+            }
+            
+            const db = firebase.firestore();
+            const snapshot = await db.collection('users').doc(user.uid)
+                .collection('chart_of_accounts')
+                .orderBy('account_code')
+                .get();
+            
+            if (snapshot.empty) {
+                log('❌ No chart of accounts found', 'error');
+                return;
+            }
+            
+            log(`Found ${snapshot.size} accounts:`, 'info');
+            
+            let lastCategory = '';
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                if (data.display_as === 'category') {
+                    lastCategory = data.category_name;
+                    log(`\n📁 ${data.account_code} - ${data.category_name}`, 'success');
+                } else if (data.display_as === 'subcategory') {
+                    log(`   └─ ${data.account_code} - ${data.subcategory_name}`, 'info');
+                }
+            });
+            
+        } catch (error) {
+            log(`❌ Error viewing chart: ${error.message}`, 'error');
+        }
+    }
+    
+    // Clear chart of accounts
+    async function clearChartOfAccounts() {
+        try {
+            if (!confirm('Are you sure you want to clear the entire chart of accounts?')) {
+                return;
+            }
+            
+            log('Clearing chart of accounts...', 'info');
+            
+            const user = firebase.auth().currentUser;
+            if (!user) {
+                log('Not authenticated!', 'error');
+                return;
+            }
+            
+            const db = firebase.firestore();
+            const snapshot = await db.collection('users').doc(user.uid)
+                .collection('chart_of_accounts')
+                .get();
+            
+            const batch = db.batch();
+            snapshot.docs.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            
+            await batch.commit();
+            log(`✅ Deleted ${snapshot.size} accounts`, 'success');
+            
+        } catch (error) {
+            log(`❌ Error clearing chart: ${error.message}`, 'error');
         }
     }
 

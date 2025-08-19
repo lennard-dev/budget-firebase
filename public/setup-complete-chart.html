@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup Complete Chart of Accounts</title>
+    <link rel="stylesheet" href="shared.css">
+    <style>
+        body {
+            padding: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        .section {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .chart-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .chart-table th {
+            background: #f3f4f6;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .chart-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .chart-table tr:hover {
+            background: #f9fafb;
+        }
+        .category-row {
+            font-weight: 600;
+            background: #eff6ff;
+        }
+        .subcategory-row {
+            padding-left: 40px !important;
+        }
+        .account-code {
+            font-family: monospace;
+            background: #e5e7eb;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-right: 10px;
+            font-size: 16px;
+        }
+        .btn-primary {
+            background: #4f46e5;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #4338ca;
+        }
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .status.success {
+            background: #d1fae5;
+            color: #065f46;
+            border: 1px solid #10b981;
+        }
+        .status.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #ef4444;
+        }
+        .status.progress {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #f59e0b;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .stat-card {
+            flex: 1;
+            padding: 15px;
+            background: #f9fafb;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-card h3 {
+            margin: 0;
+            color: #4f46e5;
+            font-size: 24px;
+        }
+        .stat-card p {
+            margin: 5px 0 0 0;
+            color: #6b7280;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 Complete Chart of Accounts Setup</h1>
+        <p>Professional accounting backend with your specific NGO categories</p>
+    </div>
+
+    <div class="section">
+        <h2>System Status</h2>
+        <div id="currentStatus">
+            <p>Checking system status...</p>
+        </div>
+        <div class="stats" id="stats" style="display:none;">
+            <div class="stat-card">
+                <h3 id="categoryCount">0</h3>
+                <p>Categories</p>
+            </div>
+            <div class="stat-card">
+                <h3 id="subcategoryCount">0</h3>
+                <p>Subcategories</p>
+            </div>
+            <div class="stat-card">
+                <h3 id="accountCount">0</h3>
+                <p>Total Accounts</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Actions</h2>
+        <button class="btn btn-danger" onclick="clearExistingChart()">
+            🗑️ Clear Existing Chart
+        </button>
+        <button class="btn btn-primary" onclick="setupCompleteChart()">
+            ✨ Setup Complete Chart
+        </button>
+        <button class="btn btn-success" onclick="verifyChart()">
+            ✅ Verify Chart
+        </button>
+        <div id="actionStatus"></div>
+    </div>
+
+    <div class="section">
+        <h2>Your NGO Chart of Accounts</h2>
+        <table class="chart-table">
+            <thead>
+                <tr>
+                    <th>Account Code</th>
+                    <th>Category</th>
+                    <th>Subcategory</th>
+                    <th>Legacy ID</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="chartPreview"></tbody>
+        </table>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { 
+            getFirestore, 
+            collection, 
+            doc, 
+            setDoc, 
+            getDocs, 
+            deleteDoc,
+            writeBatch,
+            serverTimestamp,
+            query,
+            orderBy,
+            where
+        } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCVLij8nih7vPqLfmxTTrNGDGaY8wJrGBY",
+            authDomain: "budget-v01.firebaseapp.com",
+            projectId: "budget-v01",
+            storageBucket: "budget-v01.firebasestorage.app",
+            messagingSenderId: "459584204952",
+            appId: "1:459584204952:web:0c1e0f2fb3b1eb37508c52"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        
+        // Get the authenticated user's uid from localStorage (set by app.js)
+        const uid = localStorage.getItem('currentUserId') || 'lennard.everwien@europecares.org';
+
+        // Complete NGO Chart of Accounts
+        const ngoChart = [
+            // Hidden Backend Accounts (for double-entry bookkeeping)
+            { code: '1000', name: 'Cash on Hand', type: 'asset', displayAs: 'hidden' },
+            { code: '1100', name: 'Bank Account', type: 'asset', displayAs: 'hidden' },
+            { code: '1200', name: 'Accounts Receivable', type: 'asset', displayAs: 'hidden' },
+            { code: '4000', name: 'Income', type: 'income', displayAs: 'hidden' },
+            { code: '4010', name: 'Donations', type: 'income', displayAs: 'hidden', parent: '4000' },
+            { code: '4020', name: 'Grants', type: 'income', displayAs: 'hidden', parent: '4000' },
+            
+            // ADMINISTRATION (5100-5199)
+            {
+                code: '5100',
+                name: 'Administration',
+                type: 'expense',
+                displayAs: 'category',
+                categoryName: 'Administration',
+                legacyCategoryId: 'CAT-001'
+            },
+            { code: '5101', name: 'Safety Engineer', type: 'expense', displayAs: 'subcategory', categoryName: 'Administration', subcategoryName: 'Safety Engineer', parent: '5100', legacyCategoryId: 'CAT-001', legacySubcategoryId: 'SUB-001' },
+            { code: '5102', name: 'Donation', type: 'expense', displayAs: 'subcategory', categoryName: 'Administration', subcategoryName: 'Donation', parent: '5100', legacyCategoryId: 'CAT-001', legacySubcategoryId: 'SUB-002' },
+            { code: '5103', name: 'Taxes', type: 'expense', displayAs: 'subcategory', categoryName: 'Administration', subcategoryName: 'Taxes', parent: '5100', legacyCategoryId: 'CAT-001', legacySubcategoryId: 'SUB-003' },
+            { code: '5104', name: 'Accountant', type: 'expense', displayAs: 'subcategory', categoryName: 'Administration', subcategoryName: 'Accountant', parent: '5100', legacyCategoryId: 'CAT-001', legacySubcategoryId: 'SUB-004' },
+            { code: '5105', name: 'Bank Fees', type: 'expense', displayAs: 'subcategory', categoryName: 'Administration', subcategoryName: 'Bank Fees', parent: '5100', legacyCategoryId: 'CAT-001', legacySubcategoryId: 'SUB-005' },
+            { code: '5106', name: 'Other', type: 'expense', displayAs: 'subcategory', categoryName: 'Administration', subcategoryName: 'Other', parent: '5100', legacyCategoryId: 'CAT-001', legacySubcategoryId: 'SUB-006' },
+            
+            // BENEFICIARY ACTIVITIES (5200-5299)
+            {
+                code: '5200',
+                name: 'Beneficiary Activities',
+                type: 'expense',
+                displayAs: 'category',
+                categoryName: 'Beneficiary Activities',
+                legacyCategoryId: 'CAT-002'
+            },
+            { code: '5201', name: 'Breakfast', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Breakfast', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-007' },
+            { code: '5202', name: 'Café', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Café', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-008' },
+            { code: '5203', name: 'Child Friendly Space', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Child Friendly Space', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-009' },
+            { code: '5204', name: 'Events', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Events', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-010' },
+            { code: '5205', name: 'Lunch', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Lunch', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-011' },
+            { code: '5206', name: 'Donations', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Donations', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-012' },
+            { code: '5207', name: 'Paréa Club', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Paréa Club', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-013' },
+            { code: '5208', name: 'Women Space', type: 'expense', displayAs: 'subcategory', categoryName: 'Beneficiary Activities', subcategoryName: 'Women Space', parent: '5200', legacyCategoryId: 'CAT-002', legacySubcategoryId: 'SUB-014' },
+            
+            // FACILITY (5300-5399)
+            {
+                code: '5300',
+                name: 'Facility',
+                type: 'expense',
+                displayAs: 'category',
+                categoryName: 'Facility',
+                legacyCategoryId: 'CAT-003'
+            },
+            { code: '5301', name: 'Rent', type: 'expense', displayAs: 'subcategory', categoryName: 'Facility', subcategoryName: 'Rent', parent: '5300', legacyCategoryId: 'CAT-003', legacySubcategoryId: 'SUB-015' },
+            { code: '5302', name: 'Electricity', type: 'expense', displayAs: 'subcategory', categoryName: 'Facility', subcategoryName: 'Electricity', parent: '5300', legacyCategoryId: 'CAT-003', legacySubcategoryId: 'SUB-016' },
+            { code: '5303', name: 'Insurance', type: 'expense', displayAs: 'subcategory', categoryName: 'Facility', subcategoryName: 'Insurance', parent: '5300', legacyCategoryId: 'CAT-003', legacySubcategoryId: 'SUB-017' },
+            { code: '5304', name: 'Security', type: 'expense', displayAs: 'subcategory', categoryName: 'Facility', subcategoryName: 'Security', parent: '5300', legacyCategoryId: 'CAT-003', legacySubcategoryId: 'SUB-018' },
+            { code: '5305', name: 'Water', type: 'expense', displayAs: 'subcategory', categoryName: 'Facility', subcategoryName: 'Water', parent: '5300', legacyCategoryId: 'CAT-003', legacySubcategoryId: 'SUB-019' },
+            { code: '5306', name: 'WiFi', type: 'expense', displayAs: 'subcategory', categoryName: 'Facility', subcategoryName: 'WiFi', parent: '5300', legacyCategoryId: 'CAT-003', legacySubcategoryId: 'SUB-020' },
+            
+            // CONSTRUCTION & MAINTENANCE (5400-5499)
+            {
+                code: '5400',
+                name: 'Construction & Maintenance',
+                type: 'expense',
+                displayAs: 'category',
+                categoryName: 'Construction & Maintenance',
+                legacyCategoryId: 'CAT-004'
+            },
+            { code: '5401', name: 'Cleaning Supplies', type: 'expense', displayAs: 'subcategory', categoryName: 'Construction & Maintenance', subcategoryName: 'Cleaning Supplies', parent: '5400', legacyCategoryId: 'CAT-004', legacySubcategoryId: 'SUB-021' },
+            { code: '5402', name: 'Cleaning Company', type: 'expense', displayAs: 'subcategory', categoryName: 'Construction & Maintenance', subcategoryName: 'Cleaning Company', parent: '5400', legacyCategoryId: 'CAT-004', legacySubcategoryId: 'SUB-022' },
+            { code: '5403', name: 'Waste Water', type: 'expense', displayAs: 'subcategory', categoryName: 'Construction & Maintenance', subcategoryName: 'Waste Water', parent: '5400', legacyCategoryId: 'CAT-004', legacySubcategoryId: 'SUB-023' },
+            { code: '5404', name: 'Materials & Equipment', type: 'expense', displayAs: 'subcategory', categoryName: 'Construction & Maintenance', subcategoryName: 'Materials & Equipment', parent: '5400', legacyCategoryId: 'CAT-004', legacySubcategoryId: 'SUB-024' },
+            { code: '5405', name: 'External Contractor', type: 'expense', displayAs: 'subcategory', categoryName: 'Construction & Maintenance', subcategoryName: 'External Contractor', parent: '5400', legacyCategoryId: 'CAT-004', legacySubcategoryId: 'SUB-025' },
+            { code: '5406', name: 'Minor Maintenance', type: 'expense', displayAs: 'subcategory', categoryName: 'Construction & Maintenance', subcategoryName: 'Minor Maintenance', parent: '5400', legacyCategoryId: 'CAT-004', legacySubcategoryId: 'SUB-026' },
+            
+            // OFFICE (5500-5599)
+            {
+                code: '5500',
+                name: 'Office',
+                type: 'expense',
+                displayAs: 'category',
+                categoryName: 'Office',
+                legacyCategoryId: 'CAT-005'
+            },
+            { code: '5501', name: 'Printing', type: 'expense', displayAs: 'subcategory', categoryName: 'Office', subcategoryName: 'Printing', parent: '5500', legacyCategoryId: 'CAT-005', legacySubcategoryId: 'SUB-027' },
+            { code: '5502', name: 'Stationery', type: 'expense', displayAs: 'subcategory', categoryName: 'Office', subcategoryName: 'Stationery', parent: '5500', legacyCategoryId: 'CAT-005', legacySubcategoryId: 'SUB-028' },
+            
+            // TRANSPORTATION (5600-5699)
+            {
+                code: '5600',
+                name: 'Transportation',
+                type: 'expense',
+                displayAs: 'category',
+                categoryName: 'Transportation',
+                legacyCategoryId: 'CAT-006'
+            },
+            { code: '5601', name: 'Car Rental', type: 'expense', displayAs: 'subcategory', categoryName: 'Transportation', subcategoryName: 'Car Rental', parent: '5600', legacyCategoryId: 'CAT-006', legacySubcategoryId: 'SUB-029' },
+            { code: '5602', name: 'Fuel', type: 'expense', displayAs: 'subcategory', categoryName: 'Transportation', subcategoryName: 'Fuel', parent: '5600', legacyCategoryId: 'CAT-006', legacySubcategoryId: 'SUB-030' },
+            { code: '5603', name: 'Bus Service', type: 'expense', displayAs: 'subcategory', categoryName: 'Transportation', subcategoryName: 'Bus Service', parent: '5600', legacyCategoryId: 'CAT-006', legacySubcategoryId: 'SUB-031' },
+            
+            // VOLUNTEER BENEFITS (5700-5799)
+            {
+                code: '5700',
+                name: 'Volunteer Benefits',
+                type: 'expense',
+                displayAs: 'category',
+                categoryName: 'Volunteer Benefits',
+                legacyCategoryId: 'CAT-007'
+            },
+            { code: '5701', name: 'Community Volunteer Benefits', type: 'expense', displayAs: 'subcategory', categoryName: 'Volunteer Benefits', subcategoryName: 'Community Volunteer Benefits', parent: '5700', legacyCategoryId: 'CAT-007', legacySubcategoryId: 'SUB-032' },
+            { code: '5702', name: 'Emergency Support', type: 'expense', displayAs: 'subcategory', categoryName: 'Volunteer Benefits', subcategoryName: 'Emergency Support', parent: '5700', legacyCategoryId: 'CAT-007', legacySubcategoryId: 'SUB-033' },
+            { code: '5703', name: 'Phone Credit', type: 'expense', displayAs: 'subcategory', categoryName: 'Volunteer Benefits', subcategoryName: 'Phone Credit', parent: '5700', legacyCategoryId: 'CAT-007', legacySubcategoryId: 'SUB-034' },
+            
+            // STAFF (5800-5899)
+            {
+                code: '5800',
+                name: 'Staff',
+                type: 'expense',
+                displayAs: 'category',
+                categoryName: 'Staff',
+                legacyCategoryId: 'CAT-008'
+            },
+            { code: '5801', name: 'Payroll', type: 'expense', displayAs: 'subcategory', categoryName: 'Staff', subcategoryName: 'Payroll', parent: '5800', legacyCategoryId: 'CAT-008', legacySubcategoryId: 'SUB-035' },
+            { code: '5802', name: 'Maternity Leave', type: 'expense', displayAs: 'subcategory', categoryName: 'Staff', subcategoryName: 'Maternity Leave', parent: '5800', legacyCategoryId: 'CAT-008', legacySubcategoryId: 'SUB-036' },
+            { code: '5803', name: 'Stipend', type: 'expense', displayAs: 'subcategory', categoryName: 'Staff', subcategoryName: 'Stipend', parent: '5800', legacyCategoryId: 'CAT-008', legacySubcategoryId: 'SUB-037' },
+            { code: '5804', name: 'Taxes', type: 'expense', displayAs: 'subcategory', categoryName: 'Staff', subcategoryName: 'Taxes', parent: '5800', legacyCategoryId: 'CAT-008', legacySubcategoryId: 'SUB-038' },
+            { code: '5805', name: 'Vouchers', type: 'expense', displayAs: 'subcategory', categoryName: 'Staff', subcategoryName: 'Vouchers', parent: '5800', legacyCategoryId: 'CAT-008', legacySubcategoryId: 'SUB-039' },
+            
+            // OTHER (5900-5999)
+            {
+                code: '5900',
+                name: 'Other',
+                type: 'expense',
+                displayAs: 'category',
+                categoryName: 'Other',
+                legacyCategoryId: 'CAT-009'
+            },
+            { code: '5901', name: 'Extrabudgetary Expense', type: 'expense', displayAs: 'subcategory', categoryName: 'Other', subcategoryName: 'Extrabudgetary Expense', parent: '5900', legacyCategoryId: 'CAT-009', legacySubcategoryId: 'SUB-040' },
+            { code: '5902', name: 'Bank Fees', type: 'expense', displayAs: 'subcategory', categoryName: 'Other', subcategoryName: 'Bank Fees', parent: '5900', legacyCategoryId: 'CAT-009', legacySubcategoryId: 'SUB-041' }
+        ];
+
+        // Load current status
+        async function loadCurrentStatus() {
+            try {
+                const chartSnap = await getDocs(
+                    collection(db, 'users', uid, 'chart_of_accounts')
+                );
+                
+                const categoriesSnap = await getDocs(
+                    collection(db, 'users', uid, 'categories')
+                );
+                
+                // Count categories and subcategories
+                let categoryCount = 0;
+                let subcategoryCount = 0;
+                
+                chartSnap.docs.forEach(doc => {
+                    const data = doc.data();
+                    if (data.display_as === 'category') categoryCount++;
+                    if (data.display_as === 'subcategory') subcategoryCount++;
+                });
+                
+                const statusDiv = document.getElementById('currentStatus');
+                if (chartSnap.size > 0) {
+                    statusDiv.innerHTML = `
+                        <p class="status success">✅ Chart of Accounts is active with ${chartSnap.size} accounts</p>
+                    `;
+                    document.getElementById('stats').style.display = 'flex';
+                    document.getElementById('categoryCount').textContent = categoryCount;
+                    document.getElementById('subcategoryCount').textContent = subcategoryCount;
+                    document.getElementById('accountCount').textContent = chartSnap.size;
+                } else {
+                    statusDiv.innerHTML = `
+                        <p class="status progress">⚠️ Chart of Accounts not yet created</p>
+                    `;
+                }
+                
+                // Load preview
+                loadChartPreview();
+                
+            } catch (error) {
+                console.error('Error loading status:', error);
+                document.getElementById('currentStatus').innerHTML = 
+                    '<p class="status error">❌ Error loading status: ' + error.message + '</p>';
+            }
+        }
+
+        // Load chart preview
+        function loadChartPreview() {
+            const tbody = document.getElementById('chartPreview');
+            const rows = [];
+            
+            ngoChart.forEach(account => {
+                if (account.displayAs === 'hidden') return;
+                
+                const isCategory = account.displayAs === 'category';
+                rows.push(`
+                    <tr class="${isCategory ? 'category-row' : 'subcategory-row'}">
+                        <td><span class="account-code">${account.code}</span></td>
+                        <td>${isCategory ? account.categoryName : ''}</td>
+                        <td>${!isCategory ? account.subcategoryName : ''}</td>
+                        <td>
+                            ${account.legacyCategoryId || ''}
+                            ${account.legacySubcategoryId ? '/' + account.legacySubcategoryId : ''}
+                        </td>
+                        <td><span id="status-${account.code}">⏳ Pending</span></td>
+                    </tr>
+                `);
+            });
+            
+            tbody.innerHTML = rows.join('');
+        }
+
+        // Clear existing chart
+        window.clearExistingChart = async function() {
+            const statusDiv = document.getElementById('actionStatus');
+            statusDiv.innerHTML = '<p class="status progress">🗑️ Clearing existing chart...</p>';
+            
+            try {
+                const chartSnap = await getDocs(
+                    collection(db, 'users', uid, 'chart_of_accounts')
+                );
+                
+                const batch = writeBatch(db);
+                chartSnap.docs.forEach(doc => {
+                    batch.delete(doc.ref);
+                });
+                
+                await batch.commit();
+                
+                statusDiv.innerHTML = `
+                    <p class="status success">✅ Cleared ${chartSnap.size} accounts</p>
+                `;
+                
+                await loadCurrentStatus();
+                
+            } catch (error) {
+                console.error('Error clearing chart:', error);
+                statusDiv.innerHTML = `
+                    <p class="status error">❌ Error: ${error.message}</p>
+                `;
+            }
+        };
+
+        // Setup complete chart
+        window.setupCompleteChart = async function() {
+            const statusDiv = document.getElementById('actionStatus');
+            statusDiv.innerHTML = '<p class="status progress">📊 Setting up complete chart of accounts...</p>';
+            
+            try {
+                const batch = writeBatch(db);
+                let count = 0;
+                
+                for (const account of ngoChart) {
+                    const accountDoc = {
+                        account_code: account.code,
+                        account_name: account.name,
+                        account_type: account.type,
+                        display_as: account.displayAs || 'hidden',
+                        level: account.parent ? 2 : (account.displayAs === 'category' ? 1 : 0),
+                        parent_code: account.parent || null,
+                        
+                        // Frontend compatibility fields
+                        category_name: account.categoryName || null,
+                        subcategory_name: account.subcategoryName || null,
+                        legacy_category_id: account.legacyCategoryId || null,
+                        legacy_subcategory_id: account.legacySubcategoryId || null,
+                        
+                        // Accounting fields
+                        normal_balance: account.type === 'expense' || account.type === 'asset' ? 'debit' : 'credit',
+                        financial_statement: account.type === 'asset' ? 'balance_sheet' : 'income_statement',
+                        is_active: true,
+                        system_account: account.displayAs === 'hidden',
+                        
+                        // Budget (will be populated later)
+                        budget_monthly: 0,
+                        budget_annual: 0,
+                        
+                        // Metadata
+                        created_at: serverTimestamp(),
+                        created_by: 'system',
+                        updated_at: serverTimestamp()
+                    };
+                    
+                    batch.set(
+                        doc(db, 'users', uid, 'chart_of_accounts', account.code),
+                        accountDoc
+                    );
+                    
+                    // Update status in UI
+                    const statusEl = document.getElementById(`status-${account.code}`);
+                    if (statusEl) {
+                        statusEl.innerHTML = '✅ Created';
+                        statusEl.style.color = '#10b981';
+                    }
+                    
+                    count++;
+                }
+                
+                await batch.commit();
+                
+                statusDiv.innerHTML = `
+                    <p class="status success">
+                        ✅ Successfully created ${count} accounts in Chart of Accounts!<br>
+                        • ${ngoChart.filter(a => a.displayAs === 'category').length} Categories<br>
+                        • ${ngoChart.filter(a => a.displayAs === 'subcategory').length} Subcategories<br>
+                        • ${ngoChart.filter(a => a.displayAs === 'hidden').length} System Accounts
+                    </p>
+                `;
+                
+                // Reload status
+                await loadCurrentStatus();
+                
+            } catch (error) {
+                console.error('Error setting up chart:', error);
+                statusDiv.innerHTML = `
+                    <p class="status error">❌ Error: ${error.message}</p>
+                `;
+            }
+        };
+
+        // Verify chart
+        window.verifyChart = async function() {
+            const statusDiv = document.getElementById('actionStatus');
+            statusDiv.innerHTML = '<p class="status progress">🔍 Verifying chart integrity...</p>';
+            
+            try {
+                const chartSnap = await getDocs(
+                    query(collection(db, 'users', uid, 'chart_of_accounts'), orderBy('account_code'))
+                );
+                
+                let issues = [];
+                let categoryCount = 0;
+                let subcategoryCount = 0;
+                let hiddenCount = 0;
+                
+                chartSnap.docs.forEach(doc => {
+                    const data = doc.data();
+                    
+                    if (data.display_as === 'category') categoryCount++;
+                    else if (data.display_as === 'subcategory') subcategoryCount++;
+                    else if (data.display_as === 'hidden') hiddenCount++;
+                    
+                    // Check for required fields
+                    if (!data.account_name) issues.push(`Account ${data.account_code} missing name`);
+                    if (!data.account_type) issues.push(`Account ${data.account_code} missing type`);
+                    
+                    // Check subcategories have parent
+                    if (data.display_as === 'subcategory' && !data.parent_code) {
+                        issues.push(`Subcategory ${data.account_code} missing parent`);
+                    }
+                });
+                
+                if (issues.length === 0) {
+                    statusDiv.innerHTML = `
+                        <p class="status success">
+                            ✅ Chart verification passed!<br>
+                            • ${categoryCount} Categories<br>
+                            • ${subcategoryCount} Subcategories<br>
+                            • ${hiddenCount} System Accounts<br>
+                            • Total: ${chartSnap.size} accounts
+                        </p>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `
+                        <p class="status error">
+                            ⚠️ Found ${issues.length} issues:<br>
+                            ${issues.slice(0, 5).join('<br>')}
+                            ${issues.length > 5 ? `<br>... and ${issues.length - 5} more` : ''}
+                        </p>
+                    `;
+                }
+                
+            } catch (error) {
+                console.error('Error verifying chart:', error);
+                statusDiv.innerHTML = `
+                    <p class="status error">❌ Error: ${error.message}</p>
+                `;
+            }
+        };
+
+        // Initialize on load
+        loadCurrentStatus();
+    </script>
+</body>
+</html>
