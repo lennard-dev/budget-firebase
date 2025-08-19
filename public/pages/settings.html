@@ -1050,8 +1050,8 @@
         
         html += `
           <div class="budget-category-card" data-category-id="${cat.id}" data-cat-id="${categoryId}">
-            <div class="budget-category-header" onclick="toggleBudgetCategory('${categoryId}')">
-              <div class="budget-category-expand" id="expand-${categoryId}">
+            <div class="budget-category-header" onclick="toggleBudgetCategory('${cat.id}')">
+              <div class="budget-category-expand" id="expand-${cat.id}">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="6 9 12 15 18 9"></polyline>
                 </svg>
@@ -2209,7 +2209,7 @@
   
   // Toggle budget category expansion
   window.toggleBudgetCategory = function(categoryId) {
-    const card = document.querySelector(`.budget-category-card[data-cat-id="${categoryId}"]`);
+    const card = document.querySelector(`.budget-category-card[data-category-id="${categoryId}"]`);
     const expand = document.getElementById(`expand-${categoryId}`);
     
     if (card) {

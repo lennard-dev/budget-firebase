@@ -43,7 +43,7 @@
         <div class="form-section">
           <div class="section-header">
             <h3>Subcategories</h3>
-            <button type="button" class="btn btn-sm btn-secondary" onclick="addSubcategoryRow()">
+            <button type="button" class="btn btn-sm btn-secondary" onclick="window.addSubcategoryRow()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -58,9 +58,9 @@
           
           <div class="bulk-add-section">
             <label class="form-label">Bulk Add Subcategories (one per line)</label>
-            <textarea id="bulkSubcategories" class="form-control" rows="3" 
+            <textarea id="bulkSubcategories" rows="3" 
                       placeholder="Administrative&#10;Office Supplies&#10;Utilities"></textarea>
-            <button type="button" class="btn btn-sm btn-secondary mt-2" onclick="bulkAddSubcategories()">
+            <button type="button" class="btn btn-sm btn-secondary mt-2" onclick="window.bulkAddSubcategories()">
               Add from List
             </button>
           </div>
@@ -69,8 +69,8 @@
     </div>
     
     <div class="modal-footer">
-      <button type="button" class="btn btn-secondary" onclick="closeBudgetCategoryModal()">Cancel</button>
-      <button type="button" class="btn btn-primary" onclick="saveBudgetCategory()">
+      <button type="button" class="btn btn-secondary" onclick="window.closeBudgetCategoryModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="window.saveBudgetCategory()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
           <polyline points="17 21 17 13 7 13 7 21"></polyline>
@@ -100,9 +100,12 @@
   background: white;
   border-radius: 12px;
   width: 90%;
+  max-width: 600px;
   max-height: 90vh;
   overflow-y: auto;
+  overflow-x: hidden !important;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  position: relative;
 }
 
 .modal-header {
@@ -141,6 +144,9 @@
 
 .modal-body {
   padding: 20px;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .modal-footer {
@@ -153,6 +159,9 @@
 
 .form-section {
   margin-bottom: 24px;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .form-section h3 {
@@ -179,42 +188,85 @@
 
 .subcategories-list {
   margin-bottom: 16px;
-}
-
-.subcategory-row {
-  display: grid;
-  grid-template-columns: 1fr 2fr auto;
-  gap: 12px;
-  margin-bottom: 12px;
-  padding: 12px;
-  background: #f9fafb;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-}
-
-.subcategory-row input,
-.subcategory-row textarea {
   width: 100%;
+  box-sizing: border-box;
+  min-height: 60px;
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
-.subcategory-row .remove-btn {
-  background: #fee2e2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
-  padding: 8px;
+#budgetCategoryModal .subcategory-row {
+  display: none;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 12px;
+  background: #f8fafc;
   border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  width: 100%;
+  box-sizing: border-box;
+  align-items: center;
+  transition: background 0.2s;
+}
+
+#budgetCategoryModal .subcategory-row:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+#budgetCategoryModal .subcategory-row.visible {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+#budgetCategoryModal .subcategory-row input {
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  transition: border-color 0.2s;
+  background: white;
+}
+
+#budgetCategoryModal .subcategory-row input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+#budgetCategoryModal .subcategory-row .subcat-name {
+  flex: 0 0 35%;
+  min-width: 140px;
+}
+
+#budgetCategoryModal .subcategory-row .subcat-description {
+  flex: 1;
+  min-width: 180px;
+}
+
+#budgetCategoryModal .subcategory-row .remove-btn {
+  background: #fef2f2;
+  color: #ef4444;
+  border: 1px solid #fecaca;
+  padding: 0;
+  border-radius: 4px;
   cursor: pointer;
-  height: 36px;
-  width: 36px;
+  height: 28px;
+  width: 28px;
+  flex: 0 0 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
+  margin-left: 4px;
 }
 
-.subcategory-row .remove-btn:hover {
-  background: #fecaca;
-  border-color: #f87171;
+#budgetCategoryModal .subcategory-row .remove-btn:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  transform: scale(1.05);
 }
 
 .bulk-add-section {
@@ -222,6 +274,28 @@
   background: #f0f9ff;
   border-radius: 8px;
   border: 1px solid #bfdbfe;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.bulk-add-section .form-label {
+  margin-bottom: 8px;
+  display: block;
+}
+
+.bulk-add-section textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  resize: vertical;
+  font-family: inherit;
+  padding: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  display: block;
+  min-height: 60px;
+  max-width: 100%;
 }
 
 .checkbox-label {
@@ -248,9 +322,11 @@
 </style>
 
 <script>
-let currentEditingCategory = null;
+(function() {
+  let currentEditingCategory = null;
 
-function openBudgetCategoryModal(categoryData = null) {
+  // Make functions globally accessible
+  window.openBudgetCategoryModal = function(categoryData = null) {
   currentEditingCategory = categoryData;
   const modal = document.getElementById('budgetCategoryModal');
   const title = document.getElementById('categoryModalTitle');
@@ -259,6 +335,8 @@ function openBudgetCategoryModal(categoryData = null) {
   document.getElementById('budgetCategoryForm').reset();
   document.getElementById('subcategoriesList').innerHTML = '';
   document.getElementById('bulkSubcategories').value = '';
+  
+  console.log('Opening modal with category data:', categoryData);
   
   if (categoryData) {
     // Edit mode
@@ -270,11 +348,23 @@ function openBudgetCategoryModal(categoryData = null) {
     document.getElementById('categoryModalDescription').value = categoryData.description || '';
     document.getElementById('categoryModalActive').checked = categoryData.active !== false;
     
-    // Load subcategories
+    // Load subcategories - handle both string and object formats
+    console.log('Loading subcategories:', categoryData.subcategories);
     if (categoryData.subcategories && categoryData.subcategories.length > 0) {
-      categoryData.subcategories.forEach(subcat => {
-        addSubcategoryRow(subcat);
+      categoryData.subcategories.forEach((subcat, index) => {
+        console.log(`Adding subcategory ${index}:`, subcat);
+        if (typeof subcat === 'object' && subcat.name) {
+          // Object format with name property
+          addSubcategoryRow(subcat);
+        } else if (typeof subcat === 'string' && subcat.trim()) {
+          // String format - pass as object with name
+          addSubcategoryRow({ name: subcat, description: '' });
+        }
       });
+    } else {
+      console.log('No subcategories found, adding empty row');
+      // Add one empty subcategory row if no subcategories exist
+      addSubcategoryRow();
     }
   } else {
     // Add mode
@@ -286,40 +376,92 @@ function openBudgetCategoryModal(categoryData = null) {
   modal.style.display = 'flex';
 }
 
-function closeBudgetCategoryModal() {
+window.closeBudgetCategoryModal = function() {
   document.getElementById('budgetCategoryModal').style.display = 'none';
   currentEditingCategory = null;
 }
 
-function addSubcategoryRow(data = null) {
+window.addSubcategoryRow = function(data = null) {
   const container = document.getElementById('subcategoriesList');
+  if (!container) {
+    console.error('Subcategories container not found');
+    return;
+  }
+  
   const row = document.createElement('div');
-  row.className = 'subcategory-row';
+  row.className = 'subcategory-row visible';
   
-  const subcatName = typeof data === 'string' ? data : (data?.name || '');
-  const subcatDesc = typeof data === 'object' ? (data?.description || '') : '';
-  const subcatId = typeof data === 'object' ? (data?.subcategory_id || '') : '';
+  // Handle different data formats
+  let subcatName = '';
+  let subcatDesc = '';
+  let subcatId = '';
   
-  row.innerHTML = `
-    <input type="hidden" class="subcat-id" value="${subcatId}">
-    <input type="text" class="form-control subcat-name" placeholder="Subcategory name" value="${subcatName}" required>
-    <input type="text" class="form-control subcat-description" placeholder="Description (optional)" value="${subcatDesc}">
-    <button type="button" class="remove-btn" onclick="removeSubcategoryRow(this)" title="Remove">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <line x1="18" y1="6" x2="6" y2="18"></line>
-        <line x1="6" y1="6" x2="18" y2="18"></line>
-      </svg>
-    </button>
+  if (typeof data === 'string') {
+    subcatName = data;
+  } else if (typeof data === 'object' && data !== null) {
+    subcatName = data.name || '';
+    subcatDesc = data.description || '';
+    subcatId = data.id || data.subcategory_id || '';
+  }
+  
+  console.log('Creating subcategory row with:', { name: subcatName, desc: subcatDesc, id: subcatId });
+  
+  // Create elements programmatically to avoid quote escaping issues
+  const hiddenInput = document.createElement('input');
+  hiddenInput.type = 'hidden';
+  hiddenInput.className = 'subcat-id';
+  hiddenInput.value = subcatId;
+  
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.className = 'form-control subcat-name';
+  nameInput.placeholder = 'Subcategory name';
+  nameInput.value = subcatName;
+  nameInput.required = true;
+  
+  const descInput = document.createElement('input');
+  descInput.type = 'text';
+  descInput.className = 'form-control subcat-description';
+  descInput.placeholder = 'Description (optional)';
+  descInput.value = subcatDesc;
+  
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'remove-btn';
+  removeBtn.title = 'Remove';
+  removeBtn.innerHTML = `
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+      <line x1="18" y1="6" x2="6" y2="18"></line>
+      <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>
   `;
+  removeBtn.onclick = function() {
+    row.remove();
+  };
+  
+  row.appendChild(hiddenInput);
+  row.appendChild(nameInput);
+  row.appendChild(descInput);
+  row.appendChild(removeBtn);
+  
+  // Force visibility
+  row.style.display = 'flex';
+  row.style.visibility = 'visible';
+  row.style.opacity = '1';
   
   container.appendChild(row);
+  console.log('Subcategory row added. Total rows:', container.children.length);
+  
+  // Make the container visible if it was hidden
+  container.style.display = 'block';
+  container.style.visibility = 'visible';
 }
 
-function removeSubcategoryRow(button) {
+window.removeSubcategoryRow = function(button) {
   button.closest('.subcategory-row').remove();
 }
 
-function bulkAddSubcategories() {
+window.bulkAddSubcategories = function() {
   const textarea = document.getElementById('bulkSubcategories');
   const lines = textarea.value.split('\n').filter(line => line.trim());
   
@@ -330,7 +472,7 @@ function bulkAddSubcategories() {
   textarea.value = '';
 }
 
-async function saveBudgetCategory() {
+window.saveBudgetCategory = async function() {
   const form = document.getElementById('budgetCategoryForm');
   if (!form.checkValidity()) {
     form.reportValidity();
@@ -348,19 +490,15 @@ async function saveBudgetCategory() {
     subcategories: []
   };
   
-  // Gather subcategories
+  // Gather subcategories - send as array of strings for backend compatibility
   document.querySelectorAll('.subcategory-row').forEach(row => {
-    const name = row.querySelector('.subcat-name').value.trim();
-    if (name) {
-      const subcat = {
-        name: name,
-        description: row.querySelector('.subcat-description').value.trim()
-      };
-      const id = row.querySelector('.subcat-id').value;
-      if (id) {
-        subcat.subcategory_id = id;
+    const nameInput = row.querySelector('.subcat-name');
+    if (nameInput && nameInput.value) {
+      const name = nameInput.value.trim();
+      if (name) {
+        // Just send the name as a string - backend will generate IDs
+        categoryData.subcategories.push(name);
       }
-      categoryData.subcategories.push(subcat);
     }
   });
   
@@ -387,11 +525,12 @@ async function saveBudgetCategory() {
   }
 }
 
-// Close modal when clicking outside
-window.addEventListener('click', function(event) {
-  const modal = document.getElementById('budgetCategoryModal');
-  if (event.target === modal) {
-    closeBudgetCategoryModal();
-  }
-});
+  // Close modal when clicking outside
+  window.addEventListener('click', function(event) {
+    const modal = document.getElementById('budgetCategoryModal');
+    if (event.target === modal) {
+      window.closeBudgetCategoryModal();
+    }
+  });
+})();
 </script>

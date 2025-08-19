@@ -425,10 +425,9 @@ nav a { margin-right: 8px; }
 }
 
 .budget-category-header {
-  padding: 12px 0 12px 16px;
-  padding-right: 16px;
+  padding: 12px 16px;
   display: grid;
-  grid-template-columns: 20px 1fr auto 140px;
+  grid-template-columns: 20px 1fr auto auto;
   align-items: center;
   gap: 12px;
   cursor: pointer;
@@ -479,7 +478,9 @@ nav a { margin-right: 8px; }
 .budget-category-amount {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  justify-content: flex-start;
+  min-width: 140px;
 }
 
 .budget-amount-input {
@@ -552,10 +553,9 @@ nav a { margin-right: 8px; }
 
 .budget-subcategory-item {
   display: grid;
-  grid-template-columns: 1fr 40px 140px;
+  grid-template-columns: 1fr auto auto;
   align-items: center;
-  padding: 8px 0 8px 16px;
-  padding-right: 16px;
+  padding: 8px 16px;
   border-bottom: 1px solid #f3f4f6;
   gap: 12px;
   position: relative;
@@ -566,7 +566,7 @@ nav a { margin-right: 8px; }
 }
 
 .budget-subcategory-info {
-  padding-left: 32px;
+  padding-left: 52px;
 }
 
 .budget-subcategory-name {

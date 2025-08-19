@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Seed Users - Budget App</title>
+    <link rel="stylesheet" href="/shared.css" />
+    <script defer src="/__/firebase/12.1.0/firebase-app-compat.js"></script>
+    <script defer src="/__/firebase/12.1.0/firebase-auth-compat.js"></script>
+    <script defer src="/__/firebase/12.1.0/firebase-firestore-compat.js"></script>
+    <script defer src="/__/firebase/12.1.0/firebase-functions-compat.js"></script>
+    <script src="/firebase-config.js"></script>
+    <script defer src="/__/firebase/init.js"></script>
+    <script src="/transaction-service.js"></script>
+    <script src="/app.js"></script>
+    <style>
+        body {
+            padding: 40px;
+            background: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1f2937;
+            margin-bottom: 10px;
+        }
+        .description {
+            color: #64748b;
+            margin-bottom: 30px;
+        }
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 30px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: #8B5CF6;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #7C3AED;
+        }
+        .btn-danger {
+            background: #DC2626;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #B91C1C;
+        }
+        .status {
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .status.success {
+            background: #D1FAE5;
+            color: #065F46;
+            border: 1px solid #10B981;
+        }
+        .status.error {
+            background: #FEE2E2;
+            color: #991B1B;
+            border: 1px solid #F87171;
+        }
+        .status.info {
+            background: #DBEAFE;
+            color: #1E40AF;
+            border: 1px solid #60A5FA;
+        }
+        .user-list {
+            margin-top: 20px;
+        }
+        .user-item {
+            padding: 12px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .user-info {
+            flex: 1;
+        }
+        .user-name {
+            font-weight: 500;
+            color: #1f2937;
+        }
+        .user-email {
+            color: #64748b;
+            font-size: 14px;
+        }
+        .user-role {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-left: 8px;
+        }
+        .role-admin {
+            background: #FEF3C7;
+            color: #92400E;
+        }
+        .role-manager {
+            background: #DBEAFE;
+            color: #1E40AF;
+        }
+        .role-user {
+            background: #E0E7FF;
+            color: #3730A3;
+        }
+        .role-viewer {
+            background: #F3F4F6;
+            color: #4B5563;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Seed Users Data</h1>
+        <p class="description">
+            This page allows you to seed test users into your team members collection.
+            Use this for testing the User Directory functionality.
+        </p>
+        
+        <div class="button-group">
+            <button class="btn btn-primary" onclick="seedUsers()">
+                Seed Test Users
+            </button>
+            <button class="btn btn-danger" onclick="clearUsers()">
+                Clear All Users
+            </button>
+        </div>
+        
+        <div id="status"></div>
+        <div id="userList" class="user-list"></div>
+    </div>
+
+    <script>
+        // Test users data
+        const testUsers = [
+            {
+                name: "Sarah Johnson",
+                email: "sarah.johnson@parealesvos.org",
+                role: "admin",
+                department: "Management",
+                status: "active",
+                phone: "+30 210 123 4567",
+                notes: "Executive Director"
+            },
+            {
+                name: "Michael Chen",
+                email: "michael.chen@parealesvos.org",
+                role: "manager",
+                department: "Finance",
+                status: "active",
+                phone: "+30 210 123 4568",
+                notes: "Finance Manager"
+            },
+            {
+                name: "Emma Davis",
+                email: "emma.davis@parealesvos.org",
+                role: "manager",
+                department: "Operations",
+                status: "active",
+                phone: "+30 210 123 4569",
+                notes: "Operations Manager"
+            },
+            {
+                name: "James Wilson",
+                email: "james.wilson@parealesvos.org",
+                role: "user",
+                department: "Programs",
+                status: "active",
+                phone: "+30 210 123 4570",
+                notes: "Program Coordinator"
+            },
+            {
+                name: "Sofia Martinez",
+                email: "sofia.martinez@parealesvos.org",
+                role: "user",
+                department: "Programs",
+                status: "active",
+                phone: "+30 210 123 4571",
+                notes: "Field Coordinator"
+            },
+            {
+                name: "David Brown",
+                email: "david.brown@parealesvos.org",
+                role: "user",
+                department: "Administration",
+                status: "active",
+                phone: "+30 210 123 4572",
+                notes: "Administrative Assistant"
+            },
+            {
+                name: "Anna Papadopoulos",
+                email: "anna.papa@parealesvos.org",
+                role: "user",
+                department: "Community Outreach",
+                status: "active",
+                phone: "+30 210 123 4573",
+                notes: "Community Liaison"
+            },
+            {
+                name: "Robert Taylor",
+                email: "robert.taylor@parealesvos.org",
+                role: "viewer",
+                department: "Board",
+                status: "active",
+                notes: "Board Member"
+            },
+            {
+                name: "Maria Rodriguez",
+                email: "maria.rodriguez@parealesvos.org",
+                role: "viewer",
+                department: "Board",
+                status: "active",
+                notes: "Board Member"
+            },
+            {
+                name: "Tom Anderson",
+                email: "tom.anderson@volunteer.org",
+                role: "user",
+                department: "Volunteers",
+                status: "pending",
+                notes: "New volunteer, pending approval"
+            },
+            {
+                name: "Lisa Thompson",
+                email: "lisa.thompson@intern.org",
+                role: "viewer",
+                department: "Interns",
+                status: "inactive",
+                notes: "Summer intern (completed)"
+            },
+            {
+                name: "George Dimitriou",
+                email: "george.dimitriou@parealesvos.org",
+                role: "manager",
+                department: "Logistics",
+                status: "active",
+                phone: "+30 210 123 4574",
+                notes: "Logistics Coordinator"
+            }
+        ];
+
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+        }
+
+        async function seedUsers() {
+            try {
+                showStatus('Seeding users...', 'info');
+                
+                let successCount = 0;
+                let errorCount = 0;
+                
+                for (const userData of testUsers) {
+                    try {
+                        const response = await window.callApi('/users', {
+                            method: 'POST',
+                            body: JSON.stringify(userData)
+                        });
+                        
+                        if (response.success) {
+                            successCount++;
+                        } else {
+                            errorCount++;
+                            console.error(`Failed to create user ${userData.name}:`, response.error);
+                        }
+                    } catch (error) {
+                        errorCount++;
+                        console.error(`Error creating user ${userData.name}:`, error);
+                    }
+                }
+                
+                if (errorCount === 0) {
+                    showStatus(`Successfully seeded ${successCount} users!`, 'success');
+                } else {
+                    showStatus(`Seeded ${successCount} users with ${errorCount} errors`, 'error');
+                }
+                
+                await loadUsers();
+            } catch (error) {
+                console.error('Error seeding users:', error);
+                showStatus('Failed to seed users. Check console for details.', 'error');
+            }
+        }
+
+        async function clearUsers() {
+            if (!confirm('Are you sure you want to delete all users? This cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                showStatus('Clearing users...', 'info');
+                
+                // Get all users
+                const response = await window.callApi('/users');
+                if (response.success) {
+                    const users = response.data || [];
+                    
+                    let deleteCount = 0;
+                    for (const user of users) {
+                        try {
+                            await window.callApi(`/users/${user.id}`, {
+                                method: 'DELETE'
+                            });
+                            deleteCount++;
+                        } catch (error) {
+                            console.error(`Failed to delete user ${user.name}:`, error);
+                        }
+                    }
+                    
+                    showStatus(`Cleared ${deleteCount} users`, 'success');
+                    await loadUsers();
+                }
+            } catch (error) {
+                console.error('Error clearing users:', error);
+                showStatus('Failed to clear users. Check console for details.', 'error');
+            }
+        }
+
+        async function loadUsers() {
+            try {
+                const response = await window.callApi('/users');
+                if (response.success) {
+                    const users = response.data || [];
+                    displayUsers(users);
+                }
+            } catch (error) {
+                console.error('Error loading users:', error);
+            }
+        }
+
+        function displayUsers(users) {
+            const listDiv = document.getElementById('userList');
+            
+            if (users.length === 0) {
+                listDiv.innerHTML = '<p style="color: #64748b; text-align: center; padding: 20px;">No users found</p>';
+                return;
+            }
+            
+            listDiv.innerHTML = '<h3>Current Users (' + users.length + ')</h3>' +
+                users.map(user => `
+                    <div class="user-item">
+                        <div class="user-info">
+                            <div class="user-name">
+                                ${user.name}
+                                <span class="user-role role-${user.role}">${user.role}</span>
+                            </div>
+                            <div class="user-email">${user.email} - ${user.department || 'No department'}</div>
+                        </div>
+                    </div>
+                `).join('');
+        }
+
+        // Load users on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(loadUsers, 1000);
+        });
+    </script>
+</body>
+</html>

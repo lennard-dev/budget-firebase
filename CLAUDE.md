@@ -471,3 +471,4 @@ Remove from memory when done.\
   - Always rebuild ledger after ANY transaction modification (create/update/delete)
   - Ensure ordering is consistent between rebuild logic and display logic
   - Use compound indexes for queries that need multiple sort fields
+- In the category modal, there is the visible class for the subcategory field that has caused issues. If not set correctly, the fields for the subcategories do not show up.

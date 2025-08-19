@@ -1174,19 +1174,25 @@ apiRouter.post("/categories", async (req, res) => {
     // Update existing category
     const existingDoc = await col.doc(id).get();
     const existingData = existingDoc.data() || {};
+    const oldName = existingData.name;
     
-    // Process subcategories - maintain existing IDs, generate new ones for new subcategories
-    const existingSubsMap = new Map();
+    // Build maps for tracking subcategory changes
+    const existingSubsMap = new Map(); // maps old name to ID
+    const oldSubNames = new Set(); // track all old subcategory names
+    
     if (Array.isArray(existingData.subcategories)) {
       existingData.subcategories.forEach(sub => {
         if (typeof sub === 'object' && sub.name) {
           existingSubsMap.set(sub.name, sub.id);
+          oldSubNames.add(sub.name);
         } else if (typeof sub === 'string') {
           existingSubsMap.set(sub, null);
+          oldSubNames.add(sub);
         }
       });
     }
     
+    // Process new subcategories
     const processedSubcategories = await Promise.all(
       subcategories.map(async (subName) => {
         if (existingSubsMap.has(subName) && existingSubsMap.get(subName)) {
@@ -1200,6 +1206,7 @@ apiRouter.post("/categories", async (req, res) => {
       })
     );
     
+    // Update the category document
     await col.doc(id).set({
       name, 
       code, 
@@ -1208,6 +1215,111 @@ apiRouter.post("/categories", async (req, res) => {
       category_id: existingData.category_id || await generateCategoryId(uid),
       updated_at: admin.firestore.FieldValue.serverTimestamp()
     }, {merge: true});
+    
+    // Propagate category name changes if the name changed
+    if (oldName && oldName !== name) {
+      console.log(`Category name changed from "${oldName}" to "${name}" - propagating changes`);
+      
+      // Update all transactions with the old category name
+      const transactionsSnap = await db.collection("users").doc(uid)
+          .collection("all-transactions")
+          .where("category", "==", oldName)
+          .get();
+      
+      if (!transactionsSnap.empty) {
+        const batch = db.batch();
+        let updateCount = 0;
+        
+        transactionsSnap.docs.forEach(doc => {
+          batch.update(doc.ref, { category: name });
+          updateCount++;
+        });
+        
+        await batch.commit();
+        console.log(`Updated ${updateCount} transactions with new category name`);
+      }
+      
+      // Update budgets - migrate category name in all budget documents
+      const budgetsSnap = await db.collection("users").doc(uid)
+          .collection("budgets")
+          .get();
+      
+      if (!budgetsSnap.empty) {
+        const budgetBatch = db.batch();
+        let budgetUpdateCount = 0;
+        
+        for (const budgetDoc of budgetsSnap.docs) {
+          const budgetData = budgetDoc.data();
+          if (budgetData.categories && budgetData.categories[oldName]) {
+            // Create new categories object with renamed key
+            const newCategories = {...budgetData.categories};
+            newCategories[name] = newCategories[oldName];
+            delete newCategories[oldName];
+            
+            budgetBatch.update(budgetDoc.ref, { categories: newCategories });
+            budgetUpdateCount++;
+          }
+        }
+        
+        if (budgetUpdateCount > 0) {
+          await budgetBatch.commit();
+          console.log(`Updated ${budgetUpdateCount} budget documents with new category name`);
+        }
+      }
+      
+      // Also update budget_allocations collection
+      const allocationsSnap = await db.collection("users").doc(uid)
+          .collection("budget_allocations")
+          .get();
+      
+      if (!allocationsSnap.empty) {
+        const allocationBatch = db.batch();
+        let allocationUpdateCount = 0;
+        
+        for (const allocDoc of allocationsSnap.docs) {
+          const allocData = allocDoc.data();
+          if (allocData.categories && allocData.categories[oldName]) {
+            const newCategories = {...allocData.categories};
+            newCategories[name] = newCategories[oldName];
+            delete newCategories[oldName];
+            
+            allocationBatch.update(allocDoc.ref, { categories: newCategories });
+            allocationUpdateCount++;
+          }
+        }
+        
+        if (allocationUpdateCount > 0) {
+          await allocationBatch.commit();
+          console.log(`Updated ${allocationUpdateCount} budget allocation documents`);
+        }
+      }
+    }
+    
+    // Detect and propagate subcategory name changes
+    const newSubNames = new Set(subcategories);
+    const deletedSubs = [...oldSubNames].filter(sub => !newSubNames.has(sub));
+    
+    if (deletedSubs.length > 0) {
+      console.log(`Detected removed/renamed subcategories: ${deletedSubs.join(', ')}`);
+      
+      // Note: Full subcategory rename tracking would require maintaining a mapping
+      // of old names to new names, which would need UI support. For now, we handle
+      // deletions by warning about orphaned data.
+      
+      // Check for orphaned transactions
+      for (const subName of deletedSubs) {
+        const orphanedTxns = await db.collection("users").doc(uid)
+            .collection("all-transactions")
+            .where("category", "==", name)
+            .where("subcategory", "==", subName)
+            .limit(1)
+            .get();
+        
+        if (!orphanedTxns.empty) {
+          console.warn(`Warning: Subcategory "${subName}" was removed but has existing transactions`);
+        }
+      }
+    }
     
     return res.json({success: true});
   } else {
@@ -1232,6 +1344,69 @@ apiRouter.post("/categories", async (req, res) => {
     });
     
     return res.json({success: true, id: ref.id, category_id: categoryId});
+  }
+});
+
+// Fix corrupted subcategory data
+apiRouter.post("/categories/fix-corrupted", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    let fixedCount = 0;
+    
+    // Get all categories
+    const categoriesSnap = await db.collection("users").doc(uid)
+        .collection("categories").get();
+    
+    const batch = db.batch();
+    
+    for (const doc of categoriesSnap.docs) {
+      const data = doc.data();
+      let needsFix = false;
+      const fixedSubcategories = [];
+      
+      if (data.subcategories && Array.isArray(data.subcategories)) {
+        for (const sub of data.subcategories) {
+          if (typeof sub === 'object') {
+            // Check if name field is corrupted (is an object instead of string)
+            if (typeof sub.name === 'object') {
+              console.log(`Found corrupted subcategory in ${data.name}:`, sub);
+              needsFix = true;
+              // Skip this corrupted entry
+              continue;
+            }
+            // Valid object subcategory
+            fixedSubcategories.push(sub);
+          } else if (typeof sub === 'string') {
+            // Convert string to object with ID
+            const subId = await generateSubcategoryId(uid);
+            fixedSubcategories.push({ id: subId, name: sub });
+            needsFix = true;
+          }
+        }
+      }
+      
+      if (needsFix) {
+        batch.update(doc.ref, { subcategories: fixedSubcategories });
+        fixedCount++;
+        console.log(`Fixed category ${data.name} with ${fixedSubcategories.length} valid subcategories`);
+      }
+    }
+    
+    if (fixedCount > 0) {
+      await batch.commit();
+    }
+    
+    return res.json({
+      success: true,
+      message: `Fixed ${fixedCount} categories with corrupted subcategory data`
+    });
+    
+  } catch (error) {
+    console.error("Error fixing corrupted categories:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
@@ -1780,13 +1955,34 @@ apiRouter.get("/budgets", async (req, res) => {
       
       // Handle subcategories
       (category.subcategories || []).forEach(sub => {
-        const subBudget = budgetForCategory[sub] || 0;
-        const subSpent = spendingForCategory.subcategories[sub] || 0;
+        // Extract subcategory name whether it's a string or object
+        let subName = '';
+        let subId = null;
+        
+        if (typeof sub === 'object') {
+          subId = sub.id;
+          // Handle corrupted data where name is an object
+          if (typeof sub.name === 'object') {
+            console.warn(`Corrupted subcategory in ${category.name}:`, sub);
+            return; // Skip this corrupted entry
+          }
+          subName = sub.name || '';
+        } else {
+          subName = sub;
+        }
+        
+        // Skip if no valid name
+        if (!subName) return;
+        
+        // Use the NAME to look up budget and spending data
+        const subBudget = budgetForCategory[subName] || 0;
+        const subSpent = spendingForCategory.subcategories[subName] || 0;
         
         categoryBudgetTotal += subBudget;
         
         subcategoriesData.push({
-          subcategory: sub,
+          subcategory: subName,  // String name for display
+          subcategory_id: subId, // Include ID for reference
           budgeted: subBudget,
           spent: subSpent,
           remaining: subBudget - subSpent,

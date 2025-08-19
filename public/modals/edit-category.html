@@ -82,7 +82,18 @@
     document.getElementById('cat-id').value = cat?.id || '';
     document.getElementById('cat-name').value = cat?.name || '';
     document.getElementById('cat-code').value = cat?.code || '';
-    document.getElementById('cat-subs').value = (cat?.subcategories||[]).join(', ');
+    
+    // Handle subcategories - they may be strings or objects with {id, name}
+    const subsArray = cat?.subcategories || [];
+    const subsNames = subsArray.map(sub => {
+      if (typeof sub === 'object' && sub.name) {
+        // Handle corrupted data where name might be an object
+        return typeof sub.name === 'string' ? sub.name : '';
+      }
+      return typeof sub === 'string' ? sub : '';
+    }).filter(Boolean); // Remove empty strings
+    
+    document.getElementById('cat-subs').value = subsNames.join(', ');
     document.getElementById('cat-active').checked = cat?.active !== false;
     document.getElementById('category-modal').style.display='block';
   }

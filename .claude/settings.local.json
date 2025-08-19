@@ -55,7 +55,11 @@
       "Bash(\"C:\\Program Files\\GitHub CLI\\gh.exe\" auth login --web)",
       "Bash(set \"PATH=%PATH%;C:\\Program Files\\GitHub CLI\")",
       "Bash(git push:*)",
-      "Bash(start chrome --new-window --auto-open-devtools-for-tabs \"https://budget-v01.web.app/test-category-ids.html\")"
+      "Bash(start chrome --new-window --auto-open-devtools-for-tabs \"https://budget-v01.web.app/test-category-ids.html\")",
+      "Bash(cp:*)",
+      "Bash(start chrome --new-window --auto-open-devtools-for-tabs \"https://budget-v01.web.app/#settings\")",
+      "mcp__playwright__browser_press_key",
+      "mcp__playwright__browser_take_screenshot"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

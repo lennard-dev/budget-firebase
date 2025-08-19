@@ -117,6 +117,19 @@
             <button onclick="testCategoryIds();" style="background: #fbbc04;">🧪 Test ID System</button>
         </div>
         
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #ddd;">
+            <h3 style="margin-bottom: 10px;">👥 User Management</h3>
+            <button onclick="seedTestUsers();" style="background: #8B5CF6;">👥 Seed Test Users</button>
+            <button onclick="clearAllUsers();" style="background: #DC2626;">🗑️ Clear All Users</button>
+            <button onclick="viewCurrentUsers();" style="background: #10B981;">👁️ View Current Users</button>
+        </div>
+        
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #ddd;">
+            <h3 style="margin-bottom: 10px;">📝 Activity Logs</h3>
+            <button onclick="seedActivityLogs();" style="background: #8B5CF6;">📝 Seed Activity Logs</button>
+            <button onclick="clearActivityLogs();" style="background: #DC2626;">🗑️ Clear Activity Logs</button>
+        </div>
+        
         <div id="log" class="log"></div>
     </div>
 
@@ -1504,6 +1517,366 @@
             
         } catch (error) {
             log(`Error testing ID system: ${error.message}`, 'error');
+        }
+    }
+
+    // ====================================================================
+    // USER MANAGEMENT FUNCTIONS
+    // ====================================================================
+    
+    // Test users data
+    const testUsers = [
+        {
+            name: "Sarah Johnson",
+            email: "sarah.johnson@parealesvos.org",
+            role: "admin",
+            department: "Management",
+            status: "active",
+            phone: "+30 210 123 4567",
+            notes: "Executive Director"
+        },
+        {
+            name: "Michael Chen",
+            email: "michael.chen@parealesvos.org",
+            role: "manager",
+            department: "Finance",
+            status: "active",
+            phone: "+30 210 123 4568",
+            notes: "Finance Manager"
+        },
+        {
+            name: "Emma Davis",
+            email: "emma.davis@parealesvos.org",
+            role: "manager",
+            department: "Operations",
+            status: "active",
+            phone: "+30 210 123 4569",
+            notes: "Operations Manager"
+        },
+        {
+            name: "James Wilson",
+            email: "james.wilson@parealesvos.org",
+            role: "user",
+            department: "Programs",
+            status: "active",
+            phone: "+30 210 123 4570",
+            notes: "Program Coordinator"
+        },
+        {
+            name: "Sofia Martinez",
+            email: "sofia.martinez@parealesvos.org",
+            role: "user",
+            department: "Programs",
+            status: "active",
+            phone: "+30 210 123 4571",
+            notes: "Field Coordinator"
+        },
+        {
+            name: "David Brown",
+            email: "david.brown@parealesvos.org",
+            role: "user",
+            department: "Administration",
+            status: "active",
+            phone: "+30 210 123 4572",
+            notes: "Administrative Assistant"
+        },
+        {
+            name: "Anna Papadopoulos",
+            email: "anna.papa@parealesvos.org",
+            role: "user",
+            department: "Community Outreach",
+            status: "active",
+            phone: "+30 210 123 4573",
+            notes: "Community Liaison"
+        },
+        {
+            name: "Robert Taylor",
+            email: "robert.taylor@parealesvos.org",
+            role: "viewer",
+            department: "Board",
+            status: "active",
+            notes: "Board Member"
+        },
+        {
+            name: "Maria Rodriguez",
+            email: "maria.rodriguez@parealesvos.org",
+            role: "viewer",
+            department: "Board",
+            status: "active",
+            notes: "Board Member"
+        },
+        {
+            name: "Tom Anderson",
+            email: "tom.anderson@volunteer.org",
+            role: "user",
+            department: "Volunteers",
+            status: "pending",
+            notes: "New volunteer, pending approval"
+        },
+        {
+            name: "Lisa Thompson",
+            email: "lisa.thompson@intern.org",
+            role: "viewer",
+            department: "Interns",
+            status: "inactive",
+            notes: "Summer intern (completed)"
+        },
+        {
+            name: "George Dimitriou",
+            email: "george.dimitriou@parealesvos.org",
+            role: "manager",
+            department: "Logistics",
+            status: "active",
+            phone: "+30 210 123 4574",
+            notes: "Logistics Coordinator"
+        }
+    ];
+
+    // Seed test users
+    async function seedTestUsers() {
+        try {
+            log('Starting to seed test users...', 'info');
+            
+            let successCount = 0;
+            let errorCount = 0;
+            
+            for (const userData of testUsers) {
+                try {
+                    log(`Creating user: ${userData.name} (${userData.role})...`, 'info');
+                    
+                    const response = await window.callApi('/users', {
+                        method: 'POST',
+                        body: JSON.stringify(userData)
+                    });
+                    
+                    if (response.success) {
+                        successCount++;
+                        log(`✅ Created user: ${userData.name}`, 'success');
+                    } else {
+                        errorCount++;
+                        log(`❌ Failed to create user ${userData.name}: ${response.error}`, 'error');
+                    }
+                } catch (error) {
+                    errorCount++;
+                    log(`❌ Error creating user ${userData.name}: ${error.message}`, 'error');
+                }
+            }
+            
+            if (errorCount === 0) {
+                log(`✅ Successfully seeded ${successCount} test users!`, 'success');
+            } else {
+                log(`⚠️ Seeded ${successCount} users with ${errorCount} errors`, 'warning');
+            }
+            
+        } catch (error) {
+            log(`❌ Error seeding users: ${error.message}`, 'error');
+        }
+    }
+
+    // Clear all users
+    async function clearAllUsers() {
+        if (!confirm('Are you sure you want to delete ALL users? This cannot be undone.')) {
+            return;
+        }
+        
+        try {
+            log('Fetching all users...', 'info');
+            
+            // Get all users
+            const response = await window.callApi('/users');
+            if (response.success) {
+                const users = response.data || [];
+                
+                if (users.length === 0) {
+                    log('No users found to delete', 'info');
+                    return;
+                }
+                
+                log(`Found ${users.length} users to delete`, 'info');
+                
+                let deleteCount = 0;
+                for (const user of users) {
+                    try {
+                        await window.callApi(`/users/${user.id}`, {
+                            method: 'DELETE'
+                        });
+                        deleteCount++;
+                        log(`Deleted user: ${user.name}`, 'success');
+                    } catch (error) {
+                        log(`Failed to delete user ${user.name}: ${error.message}`, 'error');
+                    }
+                }
+                
+                log(`✅ Cleared ${deleteCount} users`, 'success');
+            }
+        } catch (error) {
+            log(`❌ Error clearing users: ${error.message}`, 'error');
+        }
+    }
+
+    // View current users
+    async function viewCurrentUsers() {
+        try {
+            log('Loading current users...', 'info');
+            
+            const response = await window.callApi('/users');
+            if (response.success) {
+                const users = response.data || [];
+                
+                if (users.length === 0) {
+                    log('No users found in the system', 'info');
+                    return;
+                }
+                
+                log(`Found ${users.length} users:`, 'success');
+                
+                // Group users by role
+                const usersByRole = {
+                    admin: [],
+                    manager: [],
+                    user: [],
+                    viewer: []
+                };
+                
+                users.forEach(user => {
+                    const role = user.role || 'user';
+                    if (!usersByRole[role]) {
+                        usersByRole[role] = [];
+                    }
+                    usersByRole[role].push(user);
+                });
+                
+                // Display users by role
+                Object.keys(usersByRole).forEach(role => {
+                    if (usersByRole[role].length > 0) {
+                        log(`\n${role.toUpperCase()}S (${usersByRole[role].length}):`, 'info');
+                        usersByRole[role].forEach(user => {
+                            const status = user.status === 'active' ? '✅' : 
+                                          user.status === 'pending' ? '⏳' : '❌';
+                            log(`  ${status} ${user.name} - ${user.email} (${user.department || 'No dept'})`, 'info');
+                        });
+                    }
+                });
+                
+                // Summary
+                const activeUsers = users.filter(u => u.status === 'active').length;
+                const pendingUsers = users.filter(u => u.status === 'pending').length;
+                const inactiveUsers = users.filter(u => u.status === 'inactive').length;
+                
+                log(`\nSummary: ${activeUsers} active, ${pendingUsers} pending, ${inactiveUsers} inactive`, 'success');
+            }
+        } catch (error) {
+            log(`❌ Error loading users: ${error.message}`, 'error');
+        }
+    }
+    
+    // ============================================================================
+    // ACTIVITY LOG FUNCTIONS
+    // ============================================================================
+    
+    // Seed activity logs
+    async function seedActivityLogs() {
+        try {
+            log('=== SEEDING ACTIVITY LOGS ===', 'info');
+            
+            // Sample activity log entries
+            const sampleActivities = [
+                // Login activities
+                {type: 'login', action: 'logged_in', details: 'User logged in via Google OAuth'},
+                {type: 'login', action: 'logged_out', details: 'User logged out'},
+                
+                // User management activities
+                {type: 'user', action: 'created', details: 'Created new user account for Sarah Johnson', entityId: 'user_001', entityType: 'user'},
+                {type: 'user', action: 'updated', details: 'Updated role from User to Manager for Michael Chen', entityId: 'user_002', entityType: 'user'},
+                {type: 'user', action: 'deleted', details: 'Removed inactive user account', entityId: 'user_003', entityType: 'user'},
+                
+                // Expense activities
+                {type: 'expense', action: 'created', details: 'Created expense: Office supplies - €125.00', entityId: 'exp_001', entityType: 'expense'},
+                {type: 'expense', action: 'updated', details: 'Modified expense amount from €500.00 to €550.00', entityId: 'exp_002', entityType: 'expense'},
+                {type: 'expense', action: 'deleted', details: 'Deleted duplicate expense entry', entityId: 'exp_003', entityType: 'expense'},
+                {type: 'expense', action: 'approved', details: 'Approved expense: Monthly rent payment - €2500.00', entityId: 'exp_004', entityType: 'expense'},
+                
+                // Budget activities
+                {type: 'budget', action: 'updated', details: 'Updated monthly budget allocation for Operations from €5000 to €5500'},
+                {type: 'budget', action: 'created', details: 'Created Q2 2024 budget plan'},
+                {type: 'budget', action: 'approved', details: 'Budget approved by board of directors'},
+                
+                // System activities
+                {type: 'system', action: 'updated', details: 'Changed system currency from USD to EUR'},
+                {type: 'system', action: 'exported', details: 'Exported financial report for March 2024'},
+                {type: 'system', action: 'imported', details: 'Imported 47 transactions from CSV file'},
+                {type: 'system', action: 'cleaned_logs', details: 'Automatic cleanup removed 234 old activity logs'}
+            ];
+            
+            // Spread activities over the past 30 days
+            const now = new Date();
+            let successCount = 0;
+            let errorCount = 0;
+            
+            for (let i = 0; i < sampleActivities.length; i++) {
+                const activity = sampleActivities[i];
+                
+                // Random time in the past 30 days
+                const daysAgo = Math.floor(Math.random() * 30);
+                const hoursAgo = Math.floor(Math.random() * 24);
+                const minutesAgo = Math.floor(Math.random() * 60);
+                
+                const activityTime = new Date(now);
+                activityTime.setDate(activityTime.getDate() - daysAgo);
+                activityTime.setHours(activityTime.getHours() - hoursAgo);
+                activityTime.setMinutes(activityTime.getMinutes() - minutesAgo);
+                
+                try {
+                    const response = await window.callApi('/activity-logs', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            ...activity,
+                            timestamp: activityTime.toISOString()
+                        })
+                    });
+                    
+                    if (response.success) {
+                        successCount++;
+                        log(`✅ Created activity log: ${activity.type} - ${activity.action}`, 'success');
+                    } else {
+                        errorCount++;
+                        log(`❌ Failed to create activity: ${activity.type} - ${activity.action}`, 'error');
+                    }
+                } catch (error) {
+                    errorCount++;
+                    log(`❌ Error creating activity: ${error.message}`, 'error');
+                }
+            }
+            
+            log(`=== COMPLETED: ${successCount} created, ${errorCount} failed ===`, 
+                errorCount === 0 ? 'success' : 'warning');
+                
+        } catch (error) {
+            log(`Error seeding activity logs: ${error.message}`, 'error');
+        }
+    }
+    
+    // Clear all activity logs
+    async function clearActivityLogs() {
+        try {
+            if (!confirm('Are you sure you want to clear ALL activity logs? This cannot be undone.')) {
+                return;
+            }
+            
+            log('Clearing all activity logs...', 'info');
+            
+            // Delete logs older than 0 days (all logs)
+            const response = await window.callApi('/activity-logs/old?daysToKeep=0', {
+                method: 'DELETE'
+            });
+            
+            if (response.success) {
+                log(`✅ Deleted ${response.deletedCount} activity logs`, 'success');
+            } else {
+                log('Failed to clear activity logs', 'error');
+            }
+        } catch (error) {
+            log(`Error clearing activity logs: ${error.message}`, 'error');
         }
     }
 
