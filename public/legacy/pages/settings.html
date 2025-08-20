@@ -1406,7 +1406,7 @@
       window.openUserModal(null);
     } else {
       // Load modal if not loaded
-      loadModal('/modals/user-modal.html', () => {
+      loadModal('/legacy/modals/user-modal.html', () => {
         window.openUserModal(null);
       });
     }
@@ -1423,7 +1423,7 @@
           if (window.openUserModal) {
             window.openUserModal(user);
           } else {
-            loadModal('/modals/user-modal.html', () => {
+            loadModal('/legacy/modals/user-modal.html', () => {
               window.openUserModal(user);
             });
           }
@@ -2334,7 +2334,7 @@
     // Load the modal if not already loaded
     if (!document.getElementById('budgetCategoryModal')) {
       try {
-        const response = await fetch('/modals/budget-category-modal.html');
+        const response = await fetch('/legacy/modals/budget-category-modal.html');
         if (!response.ok) throw new Error('Modal not found');
         const html = await response.text();
         

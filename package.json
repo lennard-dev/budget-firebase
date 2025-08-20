@@ -1,0 +1,17 @@
+{
+  "name": "budget-firebase",
+  "version": "1.0.0",
+  "description": "Budget Management Application",
+  "scripts": {
+    "dev:legacy": "firebase serve --only hosting",
+    "dev:react": "cd budget-react && npm run dev",
+    "build:react": "cd budget-react && npm run build",
+    "deploy": "npm run build:react && firebase deploy",
+    "deploy:hosting": "npm run build:react && firebase deploy --only hosting",
+    "deploy:functions": "firebase deploy --only functions",
+    "serve": "firebase serve"
+  },
+  "keywords": ["budget", "firebase", "react"],
+  "author": "",
+  "license": "ISC"
+}

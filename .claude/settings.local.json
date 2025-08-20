@@ -61,7 +61,17 @@
       "mcp__playwright__browser_press_key",
       "mcp__playwright__browser_take_screenshot",
       "Bash(start chrome:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "mcp__playwright__browser_network_requests",
+      "Bash(npx tailwindcss init:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(grep:*)",
+      "mcp__playwright__browser_resize",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

@@ -8,7 +8,28 @@
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "budget-react/**"
+    ],
+    "headers": [
+      {
+        "source": "/build/**/*.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/build/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      }
     ],
     "rewrites": [
       {
@@ -16,7 +37,43 @@
         "function": "api"
       },
       {
-        "source": "**",
+        "source": "/legacy/**",
+        "destination": "/legacy/index.html"
+      },
+      {
+        "source": "/build/dashboard",
+        "destination": "/build/index.html"
+      },
+      {
+        "source": "/build/expenses",
+        "destination": "/build/index.html"
+      },
+      {
+        "source": "/build/budget",
+        "destination": "/build/index.html"
+      },
+      {
+        "source": "/build/cash-banking",
+        "destination": "/build/index.html"
+      },
+      {
+        "source": "/build/reports",
+        "destination": "/build/index.html"
+      },
+      {
+        "source": "/build/settings",
+        "destination": "/build/index.html"
+      },
+      {
+        "source": "/build/admin",
+        "destination": "/build/index.html"
+      },
+      {
+        "source": "/build",
+        "destination": "/build/index.html"
+      },
+      {
+        "source": "/",
         "destination": "/index.html"
       }
     ]

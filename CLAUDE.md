@@ -472,3 +472,110 @@ Remove from memory when done.\
   - Ensure ordering is consistent between rebuild logic and display logic
   - Use compound indexes for queries that need multiple sort fields
 - In the category modal, there is the visible class for the subcategory field that has caused issues. If not set correctly, the fields for the subcategories do not show up.
+- UI Technology Stack - Project Standards
+
+  Core UI Architecture
+
+  Single Design System Approach: Tailwind CSS v4 + Headless Components
+
+  For this professional SaaS application, use ONLY the following UI technology stack:
+
+  1. Styling Framework
+
+  - Tailwind CSS v4 (currently v4.1.12) - Utility-first CSS framework
+  - PostCSS with @tailwindcss/postcss - CSS processing
+  - NO CSS-in-JS libraries (remove Emotion, styled-components, MUI)
+  - NO component libraries with built-in styles (remove Material-UI, Ant Design, Chakra)      
+
+  2. Component Strategy
+
+  - Headless UI Components (@headlessui/react) - Unstyled, accessible components for
+  complex interactions (modals, dropdowns, comboboxes)
+  - Radix UI Primitives (@radix-ui/react-*) - Unstyled, accessible building blocks when       
+  Headless UI doesn't have what we need
+  - Custom Components - Built with Tailwind utilities following shadcn/ui patterns for        
+  consistency
+  - React Hook Form - Form handling without UI opinions
+  - Lucide React - Icon library that works seamlessly with Tailwind
+
+  3. Component Development Pattern
+
+  Follow the shadcn/ui approach (NOT the library, the PATTERN):
+  - Components are copied into src/components/ui/ as source code, not installed as
+  dependencies
+  - Each component is a single .tsx file with TypeScript
+  - Uses cn() utility (clsx + tailwind-merge) for conditional classes
+  - Variants handled via class-variance-authority (cva)
+  - All components accept className prop for composition
+
+  4. File Structure Standards
+
+  src/components/
+    ui/           # Base UI components (button, card, input, etc.)
+    forms/        # Form components (expense-form, budget-form)
+    tables/       # Table components (transactions-table, etc.)
+    charts/       # Chart components (using Recharts + Tailwind)
+    layout/       # Layout components (header, sidebar, etc.)
+    modals/       # Modal components
+
+  5. Styling Rules
+
+  - Design tokens defined in tailwind.config.js (colors, spacing, typography)
+  - NO inline style objects - Use Tailwind classes only
+  - NO CSS modules - Use Tailwind utilities
+  - NO .css files except app.css for Tailwind imports
+  - Responsive design via Tailwind breakpoints (sm:, md:, lg:, xl:, 2xl:)
+  - Dark mode via Tailwind's dark: variant (class-based strategy)
+
+  6. State & Data Fetching
+
+  - TanStack Query (React Query) - Server state management
+  - Zustand - Client state (remove Redux Toolkit unless already implemented)
+  - NO state management in UI libraries - Keep UI and state separate
+
+  7. TypeScript Standards
+
+  - ALL components in TypeScript (.tsx files only, no .jsx)
+  - Strict mode enabled
+  - Props interfaces defined for all components
+  - No @ts-ignore - Fix type issues properly
+
+  8. Performance Standards
+
+  - Bundle size target: < 200kb JS (gzipped) for initial load
+  - Code splitting at route level
+  - Lazy load heavy components (charts, modals)
+  - Image optimization with next-gen formats
+
+  9. Prohibited Patterns
+
+  - ❌ NO mixing UI libraries (MUI + Tailwind, Bootstrap + Tailwind)
+  - ❌ NO CSS-in-JS (styled-components, Emotion, Stitches)
+  - ❌ NO global CSS except Tailwind base
+  - ❌ NO component libraries with opinions (MUI, Ant, Chakra, Mantine)
+  - ❌ NO utility class libraries besides Tailwind (Bootstrap, Bulma)
+  - ❌ NO JavaScript files in components (TypeScript only)
+
+  10. Migration Path
+
+  When updating existing code:
+  1. Remove all MUI/Emotion imports and dependencies
+  2. Convert styled components to Tailwind utilities
+  3. Replace MUI components with Headless UI + Tailwind styling
+  4. Convert all .jsx files to .tsx
+  5. Ensure all components follow the shadcn/ui pattern
+
+  Rationale
+
+  This approach provides:
+  - Consistency: Single styling system, no conflicts
+  - Performance: Minimal JavaScript, CSS compiled at build time
+  - Maintainability: Predictable patterns, no magic
+  - Flexibility: Full control over components
+  - Professional: Modern stack used by successful SaaS products (Vercel, Linear, Cal.com)     
+  - Type Safety: Full TypeScript coverage
+  - Accessibility: Headless UI components are WCAG compliant by default
+
+  This is the approach used by modern SaaS applications that prioritize performance,
+  maintainability, and professional UI/UX.\
+\

@@ -434,13 +434,13 @@ async function loadPartials() {
   
   // Load pages in parallel
   const pages = [
-    { id: 'dashboard', file: '/pages/dashboard.html' },
-    { id: 'expenses', file: '/pages/expenses.html' },
-    { id: 'budget', file: '/pages/budget.html' },
-    { id: 'cash-banking', file: '/pages/cash-banking.html' },
-    { id: 'reports', file: '/pages/reports.html' },
-    { id: 'settings', file: '/pages/settings.html' },
-    { id: 'admin-tools', file: '/pages/admin-tools.html' },
+    { id: 'dashboard', file: '/legacy/pages/dashboard.html' },
+    { id: 'expenses', file: '/legacy/pages/expenses.html' },
+    { id: 'budget', file: '/legacy/pages/budget.html' },
+    { id: 'cash-banking', file: '/legacy/pages/cash-banking.html' },
+    { id: 'reports', file: '/legacy/pages/reports.html' },
+    { id: 'settings', file: '/legacy/pages/settings.html' },
+    { id: 'admin-tools', file: '/legacy/pages/admin-tools.html' },
   ];
   
   const root = select('#page-root');
@@ -473,7 +473,7 @@ async function loadPartials() {
   });
   
   // Load modals once
-  const modals = ['/modals/add-expense.html','/modals/edit-expense.html','/modals/edit-category.html','/modals/edit-payment.html','/modals/edit-donor.html'];
+  const modals = ['/legacy/modals/add-expense.html','/legacy/modals/edit-expense.html','/legacy/modals/edit-category.html','/legacy/modals/edit-payment.html','/legacy/modals/edit-donor.html'];
   const modalRoot = select('#modal-root');
   if (modalRoot) {
     const modalHtml = await Promise.all(modals.map(m => 

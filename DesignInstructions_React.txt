@@ -1,0 +1,326 @@
+• Design principles
+Clarity first, avoid visual noise
+Every screen has one primary action
+Tables are the default way to inspect data
+All numbers use locale specific formatting
+Everything is keyboard accessible and screen reader friendly
+
+• Visual language
+Font Ubuntu for titles and UI, system fallback for body if needed
+Border radius large for cards and controls
+Soft shadows, never heavy drop shadows
+Spacing scale xxs to xl, prefer generous white space
+Animation only for feedback and not for decoration
+
+• Color tokens
+Primary deep blue: #1E3A8A
+Primary on hover: #1D4ED8
+Text primary: #0F172A
+Text secondary: #475569
+Border subtle: #E2E8F0
+Surface: #F8FAFC
+Card: #FFFFFF
+Success: #10B981
+Info: #06B6D4
+Warning: #F59E0B
+Danger: #EF4444
+Badge neutrals: use slate series from Tailwind for light labels
+
+• Status color mapping for chips
+Donation info
+Deposit success
+Withdrawal danger
+Cash expense neutral slate
+Reconciled success outline
+Pending warning outline
+Failed danger outline
+
+• Icon language
+Use lucide react with stroke width 1 point five and rounded joins
+Menu icons
+LayoutDashboard for Dashboard
+Receipt for Expenses
+PieChart for Budget
+Wallet for Cash and Banking
+BarChart3 for Reports
+Settings for Settings
+Header icons
+Bell for notifications
+HelpCircle for help
+User for profile
+Per row actions
+Eye for view
+Pencil for edit
+Trash2 for delete
+MoreHorizontal for menu
+Download for export
+Plus for primary add actions
+Calendar for date pickers
+Filter for filter menu
+Search for search input
+Type specific glyph in tables
+Gift for Donation
+ArrowDownCircle for Deposit
+ArrowUpCircle for Withdrawal
+Banknote for Cash expense
+
+• Number and date formatting
+Use Intl NumberFormat with locale de DE and currency EUR for all money
+Use dd dot MM dot yyyy for dates on list views and a short month format on charts
+Always right align numeric columns
+Always show two decimals, use non breaking space before symbol if you must place EUR after the value otherwise prefer the standard currency format returned by Intl
+
+• Single source of truth for balances
+All balances must come from the ledger service, not recalculated in the client
+Remaining balance equals opening balance plus signed sum of movements in sorted order
+Donation and Deposit are positive
+Withdrawal and Cash expense are negative
+Compute once on the server and return both row running balance and page total to prevent drift
+
+App layout
+
+• Global grid
+Left sidebar fixed at 240 pixels on desktop, can be collapsed by clicking on top left hamburger menu 
+Top header fixed height 64
+Content container with max width 1440 centered inside the remaining space
+Global gutters 24
+Mobile layout collapses the sidebar into a drawer and shows a bottom bar with the four most used items Dashboard, Expenses, Budget, Cash
+
+• Header contents
+Left area
+Hamburger to toggle sidebar
+Brand token with app initials PL and app title Paréa Lesvos Budget Management
+Right area
+Global search field with Search icon
+HelpCircle opens help drawer
+Bell for notifications
+User avatar opens account menu
+
+• Sidebar contents and order
+Dashboard
+Expenses
+Budget
+Cash and Banking
+Reports
+
+Settings pinned to the bottom
+Active item has a solid primary left rail indicator and bold label
+Each item uses the icon list defined above
+
+• Page header pattern
+Title on the left and optional breadcrumb
+Right aligned context primary action button
+Example on Cash and Banking use a primary button Record Cash Movement with Plus and Banknote
+
+• Card pattern
+KPI cards are three or four per row on desktop and wrap on smaller screens
+Card header regular weight label
+Card value big numeric with locale formatting
+Optional caption underneath for freshness such as Updated just now
+
+Pages and their designs
+Dashboard
+
+• Top cards
+This month expenses, Budget remaining, Cash on hand, Pending donations
+Each shows a value and a one line caption for context
+Cards link to the relevant page when clicked
+
+• Charts
+Budget vs Actual small column chart
+Spending by category donut chart with legend to the right
+Spending trend twelve months area chart
+Charts use Recharts defaults with neutral palette and do not overuse color
+
+• Recent expenses table
+Columns Date, Category, Subcategory, Description, Amount
+Show last five with a View All link to Expenses with filters applied
+
+Expenses
+
+• Primary action Add Expense button
+• Filter bar
+Quick Select period dropdown
+Start date and End date
+Category and Subcategory dropdowns
+Search field with debounced text search
+• Table
+Columns Date, Category, Subcategory, Description, Amount, Actions
+Row click opens a side drawer with full details and attachments
+Bulk select with a master checkbox enables Export and Delete
+
+Budget
+
+• Header cards
+Total budget, Total spent, Remaining, Percent used with contextual label normal or at risk
+• Tabs
+Current month, Year to date, Current year
+• Budget table, grouped
+Top level categories are collapsible rows
+Columns Category, Budget, Spent, Remaining, Percent used, Progress, Status
+Progress is a pill shaped bar
+Status shows Under utilized, On track, At risk, Over spent with color mapping
+Row expand reveals subcategories with the same columns
+Right side shows an Edit budget button when in edit mode
+
+Cash and Banking
+
+• KPI cards at top
+Current cash balance
+Expected donations with a count chip
+Received this month with count
+Bank balance pulled from bank integration or manual entry
+
+• Tabs under the cards
+Cash movements default
+Expected donations
+Received donations
+Bank movements
+Each tab uses the same filter bar pattern and a table tailored to the content
+
+• Filter bar for Cash movements
+Quick Select Past 7, 30, 90 days plus custom
+Start and End date pickers
+Type dropdown with All types and a multi select for Donation, Deposit, Withdrawal, Cash expense
+Search by description
+Export button on the left that exports the current filtered set
+
+• Cash movements table
+Columns
+Date
+Type with a colored chip and the glyph
+Description main line plus optional second line with tags such as Staff and Training in muted tiny chips
+Amount right aligned, bold for positive, standard weight for negative and colored by sign
+Rem. Balance right aligned and muted
+Actions small sized icons Eye and Pencil behind a hover affordance, MoreHorizontal for extra actions
+Row density medium, zebra striping subtle, hover background light slate
+Header sticky
+Footer shows Opening balance at the very bottom and the sum of the current page
+
+• Expected donations and Received donations tables
+Expected donations columns Date expected, Donor, Description, Pledged amount, Status, Actions
+Received donations columns Date received, Donor, Description, Amount, Receipt, Actions
+Statuses Pending, Confirmed, Overdue
+Support a Mark as received quick action that moves a pledge into Received with a dialog to add bank reference
+
+• Bank movements table
+Columns Booking date, Value date, Counterparty, Reference, Amount, Balance, Reconciled
+Reconciled is a check icon or a warning chip if not matched
+Add a Reconcile button that opens a side by side drawer listing unmatched internal movements on the right
+
+Reports
+
+• Left column list of saved reports
+• Right area shows parameter form and a preview
+Offer Export to CSV and Print friendly views for audit
+
+Admin tools
+
+• Sections for Chart of Accounts, Categories, Subcategories, Donor list, User roles
+• Each section uses the standard table with inline add and edit dialogs
+
+Settings
+
+• Organization profile, currency, locale, bank connections, rounding rules, default date range
+• Always provide safe previews for formatting changes
+
+Tab menu rules
+
+• Use shadcn Tabs with underline indicator and no full width fill
+• Each tab label has an optional count chip in a subtle neutral
+• Tabs are navigable by arrow keys and are a11y labelled
+• When a tab has unsaved changes show a small dot to the right of the label
+
+Table system
+
+• Visuals
+Sticky header with subtle bottom border
+Row zebra every other row with a very light surface tint
+Hover lifts the row with a tiny shadow and background tint
+Compact pagination at the bottom right page size, current page, total rows
+
+• Sorting and filtering
+Sortable columns have an up down chevron that appears on hover and on focus
+Active sort shows the chevron filled and the column header in primary color
+Filters are mirrored in the URL query so a copied link restores the view
+
+• Selection and bulk actions
+First column optional checkbox
+Bulk bar appears fixed at the bottom of the viewport with actions Export, Mark as reconciled, Delete
+Destructive actions require confirmation modal
+
+• Empty, loading, and error states
+Empty shows a friendly icon, one sentence, and a primary button to add the first record
+Loading shows skeleton rows
+Errors show an Inline Alert with a Retry button and a copyable error id
+
+• Columns and alignment by type
+Dates left aligned and in dd dot MM dot yyyy
+Text left aligned
+Currency right aligned with hard alignment rules so decimals align
+Status chips are medium size with subtle backgrounds
+Action column width is fixed and icons only
+
+• Accessibility
+Table has caption for screen readers describing scope, for example Cash movements for August
+Each icon button has an aria label such as View cash movement for the date and description
+Focus rings are visible and clear
+
+Header and menu microcopy
+
+Use clear verbs and avoid jargon. Examples
+Record cash movement
+Add expense
+Edit budget
+Export filtered rows
+Mark as received
+Reconcile now
+
+React structure and file map
+
+• Routes
+src
+pages
+Dashboard
+Expenses
+Budget
+CashBanking
+Reports
+Admin
+Settings
+
+• Shared components
+Layout
+Sidebar
+TopNav
+KpiCard
+FilterBar
+Tabs
+DataTable generic
+StatusChip
+AmountCell
+DateCell
+IconCell
+EmptyState
+ErrorState
+ConfirmDialog
+Drawer right side
+
+• Patterns
+Each page composes KpiCard plus FilterBar plus Tabs plus DataTable
+Tables receive column definitions and a data array only
+All formatting lives in a utils or lib folder numbers dates currency
+
+Data integrity and audit trail
+
+• Every create update delete opens a toast with UNDO when possible
+• Open a side drawer for details that shows immutable audit properties created by, created at, updated by, updated at
+• Export always includes the current filter description in the file header
+
+Specific UX details taken from the screenshots
+
+• Keep the four KPI cards on Cash and Banking in the same order as shown, since users learned them already
+• Keep the filter cluster Quick Select, date range, type, search exactly in that order
+• Preserve the two line description pattern where a second line shows small context tags like Staff and Benefits
+• Keep the row running balance column, it is valuable in audits
+• Ensure the same computed balances appear on the Dashboard cards so there is no mismatch across pages
