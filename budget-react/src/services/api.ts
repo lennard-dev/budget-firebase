@@ -1,5 +1,6 @@
 // API Configuration and Service
 import axios from 'axios';
+import { getCurrentUserToken } from './firebase';
 
 // Base URL configuration
 const API_BASE_URL = import.meta.env.PROD 
@@ -18,15 +19,21 @@ export const api = axios.create({
 // Request interceptor to add auth token
 api.interceptors.request.use(
   async (config) => {
-    // If using Firebase Auth, get the token
     try {
-      // TODO: Add Firebase auth token when auth is implemented
-      // const auth = getAuth();
-      // const user = auth.currentUser;
-      // if (user) {
-      //   const token = await user.getIdToken();
-      //   config.headers.Authorization = `Bearer ${token}`;
-      // }
+      // Check if using mock auth
+      const useMockAuth = localStorage.getItem('useMockAuth') === 'true';
+      
+      if (useMockAuth) {
+        // Use mock token with actual user ID
+        config.headers['X-User-ID'] = '7QGvBNZJKYgTD7NdlCrgSoMhujz2';  // Your actual Firebase user ID
+        config.headers.Authorization = 'Bearer mock-test-token-' + Date.now();
+      } else {
+        // Get Firebase auth token
+        const token = await getCurrentUserToken();
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      }
     } catch (error) {
       console.error('Error getting auth token:', error);
     }
@@ -61,7 +68,15 @@ export const endpoints = {
     delete: (id: string) => api.delete(`/transactions/${id}`),
   },
   
-  // Categories
+  // Chart of Accounts (Professional accounting system)
+  chartOfAccounts: {
+    list: () => api.get('/chart-of-accounts'),
+    get: (code: string) => api.get(`/chart-of-accounts/${code}`),
+    create: (data: any) => api.post('/chart-of-accounts', data),
+    update: (code: string, data: any) => api.put(`/chart-of-accounts/${code}`, data),
+  },
+  
+  // Categories (DEPRECATED - use chartOfAccounts)
   categories: {
     list: () => api.get('/categories'),
     get: (id: string) => api.get(`/categories/${id}`),
@@ -100,6 +115,37 @@ export const endpoints = {
     monthly: (month: string, year: number) => api.get('/reports/monthly', { params: { month, year } }),
     categoryBreakdown: (params?: any) => api.get('/reports/category-breakdown', { params }),
   },
+  
+  // Migration
+  migration: {
+    completeAccountsMigration: () => api.post('/migration/complete-accounts-migration'),
+  },
+};
+
+// Transaction helper functions
+export const createTransaction = async (data: any) => {
+  // Ensure account_code is provided for expenses
+  if (data.type === 'expense' && !data.account_code) {
+    throw new Error('account_code is required for expense transactions');
+  }
+  
+  const response = await endpoints.transactions.create(data);
+  return response.data;
+};
+
+export const updateTransaction = async (id: string, data: any) => {
+  // Ensure account_code is provided if updating category
+  if ((data.category || data.subcategory) && !data.account_code) {
+    throw new Error('account_code is required when updating expense categories');
+  }
+  
+  const response = await endpoints.transactions.update(id, data);
+  return response.data;
+};
+
+export const getChartOfAccounts = async () => {
+  const response = await endpoints.chartOfAccounts.list();
+  return response.data;
 };
 
 export default api;

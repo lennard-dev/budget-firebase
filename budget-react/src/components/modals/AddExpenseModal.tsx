@@ -1,60 +1,138 @@
 import React, { useState, useEffect, Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { X, Calendar, DollarSign, Tag, FileText, Upload, CreditCard } from 'lucide-react';
+import { X, Calendar, DollarSign, FileText, Upload, CreditCard } from 'lucide-react';
+import { AccountSelector } from '../ui/AccountSelector';
+import { createTransaction } from '../../services/api';
+import { auth } from '../../services/firebase';
+
+interface Account {
+  account_code: string;
+  account_name: string;
+  category_name?: string;
+  subcategory_name?: string;
+  parent_code?: string;
+  display_as: string;
+  is_active: boolean;
+}
 
 interface AddExpenseModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
-const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClose }) => {
+const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
-    category: '',
-    subcategory: '',
+    account_code: '',
+    account_name: '',
     description: '',
     amount: '',
     paymentMethod: 'cash',
     receipt: null as File | null,
   });
 
-  const [categories] = useState([
-    { id: 'facility', name: 'Facility', subcategories: ['Rent', 'Utilities', 'Maintenance'] },
-    { id: 'administration', name: 'Administration', subcategories: ['Office Supplies', 'Insurance', 'Software'] },
-    { id: 'programs', name: 'Programs', subcategories: ['Materials', 'Activities', 'Equipment'] },
-    { id: 'staff', name: 'Staff', subcategories: ['Salaries', 'Training', 'Benefits'] },
-  ]);
-
-  const [selectedCategory, setSelectedCategory] = useState<typeof categories[0] | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    const cat = categories.find(c => c.id === formData.category);
-    setSelectedCategory(cat || null);
-  }, [formData.category, categories]);
+    fetchAccounts();
+  }, []);
+
+  const fetchAccounts = async () => {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const token = await user.getIdToken();
+      const response = await fetch('/api/chart-of-accounts', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'x-user-id': user.uid
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAccounts(data.accounts || []);
+      }
+    } catch (err) {
+      console.error('Error fetching accounts:', err);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Here you would make the API call to save the expense
-    console.log('Submitting expense:', formData);
-    
-    // Reset form and close modal
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      category: '',
-      subcategory: '',
-      description: '',
-      amount: '',
-      paymentMethod: 'cash',
-      receipt: null,
-    });
-    onClose();
+    setLoading(true);
+    setError('');
+
+    try {
+      // Prepare transaction data with account_code
+      const transactionData: any = {
+        date: formData.date,
+        type: 'expense',
+        account: formData.paymentMethod === 'cash' ? 'cash' : 'bank',
+        account_code: formData.account_code, // CRITICAL: Send account_code
+        account_name: formData.account_name,
+        description: formData.description,
+        amount: parseFloat(formData.amount),
+        paymentMethod: formData.paymentMethod,
+        // Legacy fields temporarily for compatibility
+        category: formData.account_name.split(' - ')[0] || '',
+        subcategory: formData.account_name.includes(' - ') ? formData.account_name.split(' - ')[1] : ''
+      };
+
+      // Upload receipt if provided
+      let receiptId = null;
+      if (formData.receipt) {
+        // Handle receipt upload (implementation depends on your storage solution)
+        // receiptId = await uploadReceipt(formData.receipt);
+      }
+
+      if (receiptId) {
+        transactionData.metadata = { receiptId };
+      }
+
+      // Create the transaction
+      await createTransaction(transactionData);
+
+      // Reset form
+      setFormData({
+        date: new Date().toISOString().split('T')[0],
+        account_code: '',
+        account_name: '',
+        description: '',
+        amount: '',
+        paymentMethod: 'cash',
+        receipt: null,
+      });
+
+      // Notify parent and close
+      if (onSuccess) {
+        onSuccess();
+      }
+      onClose();
+    } catch (err: any) {
+      console.error('Error creating expense:', err);
+      setError(err.message || 'Failed to create expense');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFormData({ ...formData, receipt: e.target.files[0] });
     }
+  };
+
+  const handleAccountChange = (accountCode: string, accountName: string) => {
+    setFormData({ 
+      ...formData, 
+      account_code: accountCode,
+      account_name: accountName 
+    });
   };
 
   return (
@@ -97,179 +175,154 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({ isOpen, onClose }) =>
                   </button>
                 </Dialog.Title>
 
+                {error && (
+                  <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                    {error}
+                  </div>
+                )}
+
                 <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
                   <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-0">
-                  {/* Date Field */}
-                  <div>
-                    <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
-                      Date
-                    </label>
-                    <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input
-                        type="date"
-                        id="date"
-                        value={formData.date}
-                        onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* Category Field */}
-                  <div>
-                    <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">
-                      Category
-                    </label>
-                    <div className="relative">
-                      <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <select
-                        id="category"
-                        value={formData.category}
-                        onChange={(e) => setFormData({ ...formData, category: e.target.value, subcategory: '' })}
-                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent appearance-none"
-                        required
-                      >
-                        <option value="">Select category</option>
-                        {categories.map((cat) => (
-                          <option key={cat.id} value={cat.id}>
-                            {cat.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Subcategory Field */}
-                  {selectedCategory && (
+                    {/* Date Field */}
                     <div>
-                      <label htmlFor="subcategory" className="block text-sm font-medium text-gray-700 mb-1">
-                        Subcategory
+                      <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
+                        Date
                       </label>
-                      <select
-                        id="subcategory"
-                        value={formData.subcategory}
-                        onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent appearance-none"
-                        required
-                      >
-                        <option value="">Select subcategory</option>
-                        {selectedCategory.subcategories.map((sub) => (
-                          <option key={sub} value={sub}>
-                            {sub}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {/* Description Field */}
-                  <div>
-                    <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
-                      Description
-                    </label>
-                    <div className="relative">
-                      <FileText className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                      <textarea
-                        id="description"
-                        value={formData.description}
-                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
-                        rows={3}
-                        placeholder="Enter expense description"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* Amount Field */}
-                  <div>
-                    <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">
-                      Amount
-                    </label>
-                    <div className="relative">
-                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input
-                        type="number"
-                        id="amount"
-                        value={formData.amount}
-                        onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                        placeholder="0.00"
-                        step="0.01"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* Payment Method */}
-                  <div>
-                    <label htmlFor="paymentMethod" className="block text-sm font-medium text-gray-700 mb-1">
-                      Payment Method
-                    </label>
-                    <div className="relative">
-                      <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <select
-                        id="paymentMethod"
-                        value={formData.paymentMethod}
-                        onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })}
-                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent appearance-none"
-                        required
-                      >
-                        <option value="cash">Cash</option>
-                        <option value="card">Card</option>
-                        <option value="bank_transfer">Bank Transfer</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Receipt Upload */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Receipt (Optional)
-                    </label>
-                    <div className="flex items-center justify-center w-full">
-                      <label
-                        htmlFor="receipt"
-                        className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors"
-                      >
-                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                          <Upload className="w-8 h-8 mb-2 text-gray-400" />
-                          <p className="mb-2 text-sm text-gray-500">
-                            <span className="font-semibold">Click to upload</span> or drag and drop
-                          </p>
-                          <p className="text-xs text-gray-500">PNG, JPG or PDF (MAX. 5MB)</p>
-                          {formData.receipt && (
-                            <p className="mt-2 text-sm text-primary-600">{formData.receipt.name}</p>
-                          )}
-                        </div>
+                      <div className="relative">
+                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
-                          id="receipt"
-                          type="file"
-                          className="hidden"
-                          accept="image/*,.pdf"
-                          onChange={handleFileChange}
+                          type="date"
+                          id="date"
+                          value={formData.date}
+                          onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          required
                         />
+                      </div>
+                    </div>
+
+                    {/* Account Selector - USES ACCOUNT CODES */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Expense Account
                       </label>
+                      <AccountSelector
+                        value={formData.account_code}
+                        onChange={handleAccountChange}
+                        accounts={accounts}
+                        placeholder="Select expense account"
+                        required={true}
+                      />
+                    </div>
+
+                    {/* Description Field */}
+                    <div>
+                      <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+                        Description
+                      </label>
+                      <div className="relative">
+                        <FileText className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                        <textarea
+                          id="description"
+                          value={formData.description}
+                          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+                          rows={3}
+                          placeholder="Enter expense description"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    {/* Amount Field */}
+                    <div>
+                      <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">
+                        Amount
+                      </label>
+                      <div className="relative">
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type="number"
+                          id="amount"
+                          value={formData.amount}
+                          onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          placeholder="0.00"
+                          step="0.01"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    {/* Payment Method */}
+                    <div>
+                      <label htmlFor="paymentMethod" className="block text-sm font-medium text-gray-700 mb-1">
+                        Payment Method
+                      </label>
+                      <div className="relative">
+                        <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <select
+                          id="paymentMethod"
+                          value={formData.paymentMethod}
+                          onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })}
+                          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent appearance-none"
+                          required
+                        >
+                          <option value="cash">Cash</option>
+                          <option value="card">Card</option>
+                          <option value="bank_transfer">Bank Transfer</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Receipt Upload */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Receipt (Optional)
+                      </label>
+                      <div className="flex items-center justify-center w-full">
+                        <label
+                          htmlFor="receipt"
+                          className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors"
+                        >
+                          <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                            <Upload className="w-8 h-8 mb-2 text-gray-400" />
+                            <p className="mb-2 text-sm text-gray-500">
+                              <span className="font-semibold">Click to upload</span> or drag and drop
+                            </p>
+                            <p className="text-xs text-gray-500">PNG, JPG or PDF (MAX. 5MB)</p>
+                            {formData.receipt && (
+                              <p className="mt-2 text-sm text-primary-600">{formData.receipt.name}</p>
+                            )}
+                          </div>
+                          <input
+                            id="receipt"
+                            type="file"
+                            className="hidden"
+                            accept="image/*,application/pdf"
+                            onChange={handleFileChange}
+                          />
+                        </label>
+                      </div>
                     </div>
                   </div>
-                  </div>
 
-                  {/* Form Actions - Outside scrollable area */}
-                  <div className="flex gap-3 p-6 pt-4 border-t border-gray-100">
+                  {/* Form Actions */}
+                  <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100">
                     <button
                       type="button"
                       onClick={onClose}
-                      className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
+                      disabled={loading}
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
+                      className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={loading || !formData.account_code}
                     >
-                      Add Expense
+                      {loading ? 'Creating...' : 'Add Expense'}
                     </button>
                   </div>
                 </form>

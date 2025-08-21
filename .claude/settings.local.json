@@ -71,7 +71,11 @@
       "Bash(npm uninstall:*)",
       "Bash(grep:*)",
       "mcp__playwright__browser_resize",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(firebase apps:sdkconfig:*)",
+      "Bash(firebase apps:list:*)",
+      "Bash(sed:*)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

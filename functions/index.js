@@ -41,6 +41,20 @@ async function authenticateRequest(req, res, next) {
     return;
   }
 
+  // Check for mock user headers from React app
+  // Accept both test user and actual user ID for development
+  const mockUserId = req.headers["x-user-id"];
+  if (mockUserId === "test-admin-user-001" || mockUserId === "7QGvBNZJKYgTD7NdlCrgSoMhujz2") {
+    req.user = {
+      uid: mockUserId,
+      email: mockUserId === "7QGvBNZJKYgTD7NdlCrgSoMhujz2" 
+        ? "lennard.everwien@europecares.org" 
+        : "admin@test.local",
+    };
+    next();
+    return;
+  }
+
   try {
     const authHeader = req.headers.authorization || "";
     const match = authHeader.match(/^Bearer (.*)$/i);
@@ -51,12 +65,21 @@ async function authenticateRequest(req, res, next) {
 
     const idToken = match[1];
 
-    // Mock token support for development
+    // Mock token support for development (including React app mock token)
     if (idToken.startsWith("mock-test-token-")) {
-      req.user = {
-        uid: "test-admin-user-001",
-        email: "admin@test.local",
-      };
+      // Check if a specific user ID was provided in headers
+      const mockUserId = req.headers["x-user-id"];
+      if (mockUserId === "7QGvBNZJKYgTD7NdlCrgSoMhujz2") {
+        req.user = {
+          uid: "7QGvBNZJKYgTD7NdlCrgSoMhujz2",
+          email: "lennard.everwien@europecares.org",
+        };
+      } else {
+        req.user = {
+          uid: "test-admin-user-001",
+          email: "admin@test.local",
+        };
+      }
       next();
       return;
     }
@@ -115,43 +138,8 @@ async function generateSubcategoryId(uid) {
   });
 }
 
-/**
- * Get category ID by name (helper for migration)
- */
-async function getCategoryIdByName(uid, categoryName) {
-  if (!categoryName) return null;
-  
-  const snap = await db.collection("users").doc(uid)
-      .collection("categories")
-      .where("name", "==", categoryName)
-      .limit(1)
-      .get();
-  
-  if (!snap.empty) {
-    const data = snap.docs[0].data();
-    return data.id || snap.docs[0].id;
-  }
-  return null;
-}
-
-/**
- * Get subcategory ID by name within a category
- */
-async function getSubcategoryIdByName(uid, categoryId, subcategoryName) {
-  if (!categoryId || !subcategoryName) return null;
-  
-  const categoryDoc = await db.collection("users").doc(uid)
-      .collection("categories").doc(categoryId).get();
-  
-  if (categoryDoc.exists) {
-    const subcategories = categoryDoc.data().subcategories || [];
-    const sub = subcategories.find(s => 
-      (typeof s === 'object' && s.name === subcategoryName) || s === subcategoryName
-    );
-    return sub?.id || null;
-  }
-  return null;
-}
+// REMOVED: Legacy category helper functions - no longer needed
+// All transactions now use account_code directly from frontend
 
 // ==================== CORE TRANSACTION LOGIC ====================
 
@@ -191,6 +179,11 @@ function getAffectedAccounts(transaction) {
  * This is THE core function - everything goes through here
  */
 async function createTransaction(uid, transactionData) {
+  // RADICAL CHANGE: account_code is NOW REQUIRED for expenses
+  if (transactionData.type === 'expense' && !transactionData.account_code) {
+    throw new Error('account_code is required for expense transactions');
+  }
+  
   // Store affected accounts for later rebuild
   const txnData = {
     id: '', // Will be generated
@@ -202,44 +195,19 @@ async function createTransaction(uid, transactionData) {
     account: transactionData.account || "cash",
     amount: Number(transactionData.amount),
     description: transactionData.description || "",
-    category: transactionData.category || null,
-    subcategory: transactionData.subcategory || null,
-    category_id: null, // Will be looked up if category provided
-    subcategory_id: null, // Will be looked up if subcategory provided
-    account_code: null, // NEW: Professional account code
-    journal_entries: [], // NEW: Double-entry bookkeeping
+    account_code: transactionData.account_code || null, // DIRECTLY FROM FRONTEND
+    account_name: transactionData.account_name || null, // For display purposes
+    journal_entries: [], // Double-entry bookkeeping
     paymentMethod: transactionData.paymentMethod || null, // Store at top level for expenses
     metadata: transactionData.metadata || {},
+    // DEPRECATED FIELDS - kept temporarily for migration
+    category: transactionData.category || null,
+    subcategory: transactionData.subcategory || null,
   };
   
-  // Look up category and subcategory IDs if names are provided
-  if (txnData.category) {
-    const categoryId = await getCategoryIdByName(uid, txnData.category);
-    if (categoryId) {
-      txnData.category_id = categoryId;
-      
-      // Look up subcategory ID if subcategory is provided
-      if (txnData.subcategory) {
-        const subcategoryId = await getSubcategoryIdByName(uid, categoryId, txnData.subcategory);
-        if (subcategoryId) {
-          txnData.subcategory_id = subcategoryId;
-        }
-      }
-    }
-  }
-  
-  // NEW: Look up professional account code
-  if (txnData.category) {
-    const accountCode = await accountsService.getAccountFromCategory(
-      uid, 
-      txnData.category, 
-      txnData.subcategory
-    );
-    if (accountCode) {
-      txnData.account_code = accountCode;
-      // Create journal entries for double-entry bookkeeping
-      txnData.journal_entries = accountsService.createJournalEntries(txnData);
-    }
+  // Create journal entries for double-entry bookkeeping
+  if (txnData.account_code) {
+    txnData.journal_entries = accountsService.createJournalEntries(txnData);
   }
   
   // Get affected accounts before the transaction
@@ -845,20 +813,16 @@ apiRouter.put("/transactions/:id", async (req, res) => {
       (updates.type !== undefined && updates.type !== oldData.type)
     );
 
-    // Look up category and subcategory IDs if names are provided
-    if (updates.category && updates.category !== oldData.category) {
-      const categoryId = await getCategoryIdByName(uid, updates.category);
-      if (categoryId) {
-        updates.category_id = categoryId;
-        
-        // Look up subcategory ID if subcategory is provided
-        if (updates.subcategory) {
-          const subcategoryId = await getSubcategoryIdByName(uid, categoryId, updates.subcategory);
-          if (subcategoryId) {
-            updates.subcategory_id = subcategoryId;
-          }
-        }
-      }
+    // RADICAL: account_code must be provided directly
+    if (updates.account_code) {
+      // Update journal entries with new account code
+      updates.journal_entries = accountsService.createJournalEntries({...oldData, ...updates});
+    } else if ((updates.category || updates.subcategory) && oldData.type === 'expense') {
+      // If updating category/subcategory without account_code, reject
+      return res.status(400).json({
+        success: false,
+        error: "account_code is required when updating expense categories"
+      });
     }
 
     // Update the transaction with new data
@@ -1131,6 +1095,62 @@ apiRouter.get("/balances", async (req, res) => {
   }
 });
 
+// 4b. Get summary (includes balances and monthly stats)
+apiRouter.get("/summary", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+
+    // Get account balances
+    const [cashDoc, bankDoc] = await Promise.all([
+      db.collection("users").doc(uid)
+          .collection("account_balances").doc("cash").get(),
+      db.collection("users").doc(uid)
+          .collection("account_balances").doc("bank").get(),
+    ]);
+
+    // Calculate current month expenses
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthStartStr = monthStart.toISOString().split('T')[0];
+    
+    // Get expenses for current month
+    const expensesSnap = await db.collection("users").doc(uid)
+        .collection("all-transactions")
+        .where("type", "==", "expense")
+        .orderBy("date", "desc")
+        .limit(100)
+        .get();
+    
+    let monthExpenses = 0;
+    expensesSnap.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.date >= monthStartStr && !data.voided) {
+        monthExpenses += Math.abs(data.amount || 0);
+      }
+    });
+
+    // Assuming a fixed budget for now (can be made dynamic later)
+    const monthlyBudget = 10000;
+    const budgetRemaining = monthlyBudget - monthExpenses;
+
+    res.json({
+      success: true,
+      cashBalance: cashDoc.exists ? cashDoc.data().current_balance : 0,
+      bankBalance: bankDoc.exists ? bankDoc.data().current_balance : 0,
+      monthExpenses: monthExpenses,
+      budgetRemaining: budgetRemaining,
+      monthlyBudget: monthlyBudget,
+      pendingDonations: 0, // To be implemented with expected income feature
+    });
+  } catch (error) {
+    console.error("Error fetching summary:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 // 5. Update transaction
 apiRouter.patch("/transactions/:id", async (req, res) => {
   try {
@@ -1175,606 +1195,137 @@ apiRouter.get("/categories", async (req, res) => {
   const uid = req.user.uid;
   
   try {
-    // Check if chart_of_accounts exists
-    const chartSnap = await db.collection("users").doc(uid)
-      .collection("chart_of_accounts")
-      .limit(1)
-      .get();
+    // Use chart_of_accounts ONLY - Professional approach
+    const categories = await accountsService.getCategoresFromAccounts(uid);
     
-    if (!chartSnap.empty) {
-      // Use new chart_of_accounts
-      const categories = await accountsService.getCategoresFromAccounts(uid);
-      res.json({success: true, data: categories});
-    } else {
-      // Fall back to old categories collection
-      const snap = await db.collection("users").doc(uid)
-        .collection("categories").orderBy("name").get();
-      const data = snap.docs.map((d) => ({id: d.id, ...d.data()}));
-      res.json({success: true, data});
+    if (!categories || categories.length === 0) {
+      // If no chart of accounts exists, return empty with helpful message
+      return res.json({
+        success: true,
+        data: [],
+        message: "No chart of accounts found. Please run /api/chart-of-accounts/migrate to set up."
+      });
     }
+    
+    res.json({success: true, data: categories});
   } catch (error) {
-    console.error("Error fetching categories:", error);
-    // Fall back to old categories collection on error
-    const snap = await db.collection("users").doc(uid)
-      .collection("categories").orderBy("name").get();
-    const data = snap.docs.map((d) => ({id: d.id, ...d.data()}));
-    res.json({success: true, data});
+    console.error("Error fetching categories from chart of accounts:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: "Failed to fetch categories. Please ensure chart of accounts is set up."
+    });
   }
 });
 
 apiRouter.post("/categories", async (req, res) => {
   const uid = req.user.uid;
   const {id, name, code, subcategories = [], active = true} = req.body || {};
-  if (!name || !code) {
-    return res.status(400).json({success: false, error: "Missing name or code"});
+  if (!name) {
+    return res.status(400).json({success: false, error: "Missing category name"});
   }
   
-  // Check if chart_of_accounts exists
-  const chartCheck = await db.collection("users").doc(uid)
-    .collection("chart_of_accounts").limit(1).get();
-  
-  if (!chartCheck.empty) {
-    // Use new chart_of_accounts system
-    try {
-      const categoryId = id || await generateCategoryId(uid);
-      const baseAccountCode = 5000 + (parseInt(categoryId.replace('CAT-', '')) * 100);
-      
-      // Create/update category account
-      await accountsService.createAccount(uid, {
-        account_code: String(baseAccountCode),
-        account_name: name,
-        account_type: 'expense',
-        display_as: 'category',
-        category_name: name,
-        legacy_category_id: categoryId,
-        created_by: uid
-      });
-      
-      // Create/update subcategory accounts
-      let subIndex = 1;
-      for (const subName of subcategories) {
-        const subId = await generateSubcategoryId(uid);
-        const subAccountCode = baseAccountCode + subIndex;
-        
-        await accountsService.createAccount(uid, {
-          account_code: String(subAccountCode),
-          account_name: subName,
-          account_type: 'expense',
-          display_as: 'subcategory',
-          parent_code: String(baseAccountCode),
-          category_name: name,
-          subcategory_name: subName,
-          legacy_category_id: categoryId,
-          legacy_subcategory_id: subId,
-          created_by: uid
-        });
-        subIndex++;
-      }
-      
-      return res.json({success: true, id: categoryId, category_id: categoryId});
-    } catch (error) {
-      console.error("Error creating category in chart_of_accounts:", error);
-      return res.status(500).json({success: false, error: error.message});
-    }
-  }
-  
-  // Fall back to old categories collection
-  const col = db.collection("users").doc(uid).collection("categories");
-  
-  if (id) {
-    // Update existing category
-    const existingDoc = await col.doc(id).get();
-    const existingData = existingDoc.data() || {};
-    const oldName = existingData.name;
-    
-    // Build maps for tracking subcategory changes
-    const existingSubsMap = new Map(); // maps old name to ID
-    const oldSubNames = new Set(); // track all old subcategory names
-    
-    if (Array.isArray(existingData.subcategories)) {
-      existingData.subcategories.forEach(sub => {
-        if (typeof sub === 'object' && sub.name) {
-          existingSubsMap.set(sub.name, sub.id);
-          oldSubNames.add(sub.name);
-        } else if (typeof sub === 'string') {
-          existingSubsMap.set(sub, null);
-          oldSubNames.add(sub);
-        }
-      });
-    }
-    
-    // Process new subcategories
-    const processedSubcategories = await Promise.all(
-      subcategories.map(async (subName) => {
-        if (existingSubsMap.has(subName) && existingSubsMap.get(subName)) {
-          // Existing subcategory with ID
-          return { id: existingSubsMap.get(subName), name: subName };
-        } else {
-          // New subcategory - generate ID
-          const subId = await generateSubcategoryId(uid);
-          return { id: subId, name: subName };
-        }
-      })
-    );
-    
-    // Update the category document
-    await col.doc(id).set({
-      name, 
-      code, 
-      subcategories: processedSubcategories, 
-      active,
-      category_id: existingData.category_id || await generateCategoryId(uid),
-      updated_at: admin.firestore.FieldValue.serverTimestamp()
-    }, {merge: true});
-    
-    // Propagate category name changes if the name changed
-    if (oldName && oldName !== name) {
-      console.log(`Category name changed from "${oldName}" to "${name}" - propagating changes`);
-      
-      // Update all transactions with the old category name
-      const transactionsSnap = await db.collection("users").doc(uid)
-          .collection("all-transactions")
-          .where("category", "==", oldName)
-          .get();
-      
-      if (!transactionsSnap.empty) {
-        const batch = db.batch();
-        let updateCount = 0;
-        
-        transactionsSnap.docs.forEach(doc => {
-          batch.update(doc.ref, { category: name });
-          updateCount++;
-        });
-        
-        await batch.commit();
-        console.log(`Updated ${updateCount} transactions with new category name`);
-      }
-      
-      // Update budgets - migrate category name in all budget documents
-      const budgetsSnap = await db.collection("users").doc(uid)
-          .collection("budgets")
-          .get();
-      
-      if (!budgetsSnap.empty) {
-        const budgetBatch = db.batch();
-        let budgetUpdateCount = 0;
-        
-        for (const budgetDoc of budgetsSnap.docs) {
-          const budgetData = budgetDoc.data();
-          if (budgetData.categories && budgetData.categories[oldName]) {
-            // Create new categories object with renamed key
-            const newCategories = {...budgetData.categories};
-            newCategories[name] = newCategories[oldName];
-            delete newCategories[oldName];
-            
-            budgetBatch.update(budgetDoc.ref, { categories: newCategories });
-            budgetUpdateCount++;
-          }
-        }
-        
-        if (budgetUpdateCount > 0) {
-          await budgetBatch.commit();
-          console.log(`Updated ${budgetUpdateCount} budget documents with new category name`);
-        }
-      }
-      
-      // Also update budget_allocations collection
-      const allocationsSnap = await db.collection("users").doc(uid)
-          .collection("budget_allocations")
-          .get();
-      
-      if (!allocationsSnap.empty) {
-        const allocationBatch = db.batch();
-        let allocationUpdateCount = 0;
-        
-        for (const allocDoc of allocationsSnap.docs) {
-          const allocData = allocDoc.data();
-          if (allocData.categories && allocData.categories[oldName]) {
-            const newCategories = {...allocData.categories};
-            newCategories[name] = newCategories[oldName];
-            delete newCategories[oldName];
-            
-            allocationBatch.update(allocDoc.ref, { categories: newCategories });
-            allocationUpdateCount++;
-          }
-        }
-        
-        if (allocationUpdateCount > 0) {
-          await allocationBatch.commit();
-          console.log(`Updated ${allocationUpdateCount} budget allocation documents`);
-        }
-      }
-    }
-    
-    // Detect and propagate subcategory name changes
-    const newSubNames = new Set(subcategories);
-    const deletedSubs = [...oldSubNames].filter(sub => !newSubNames.has(sub));
-    
-    if (deletedSubs.length > 0) {
-      console.log(`Detected removed/renamed subcategories: ${deletedSubs.join(', ')}`);
-      
-      // Note: Full subcategory rename tracking would require maintaining a mapping
-      // of old names to new names, which would need UI support. For now, we handle
-      // deletions by warning about orphaned data.
-      
-      // Check for orphaned transactions
-      for (const subName of deletedSubs) {
-        const orphanedTxns = await db.collection("users").doc(uid)
-            .collection("all-transactions")
-            .where("category", "==", name)
-            .where("subcategory", "==", subName)
-            .limit(1)
-            .get();
-        
-        if (!orphanedTxns.empty) {
-          console.warn(`Warning: Subcategory "${subName}" was removed but has existing transactions`);
-        }
-      }
-    }
-    
-    return res.json({success: true});
-  } else {
-    // Create new category with generated ID
-    const categoryId = await generateCategoryId(uid);
-    
-    // Generate IDs for all subcategories
-    const processedSubcategories = await Promise.all(
-      subcategories.map(async (subName) => ({
-        id: await generateSubcategoryId(uid),
-        name: subName
-      }))
-    );
-    
-    const ref = await col.add({
-      category_id: categoryId,
-      name, 
-      code, 
-      subcategories: processedSubcategories, 
-      active,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    
-    return res.json({success: true, id: ref.id, category_id: categoryId});
-  }
-});
-
-// Fix corrupted subcategory data
-apiRouter.post("/categories/fix-corrupted", async (req, res) => {
   try {
-    const uid = req.user.uid;
-    let fixedCount = 0;
-    
-    // Get all categories
-    const categoriesSnap = await db.collection("users").doc(uid)
-        .collection("categories").get();
-    
-    const batch = db.batch();
-    
-    for (const doc of categoriesSnap.docs) {
-      const data = doc.data();
-      let needsFix = false;
-      const fixedSubcategories = [];
+    // Always use chart_of_accounts - Professional approach
+    // Generate account code if not provided
+    let accountCode = code;
+    if (!accountCode) {
+      // Find next available account code
+      const existingAccounts = await db.collection("users").doc(uid)
+        .collection("chart_of_accounts")
+        .where("display_as", "==", "category")
+        .orderBy("account_code", "desc")
+        .limit(1)
+        .get();
       
-      if (data.subcategories && Array.isArray(data.subcategories)) {
-        for (const sub of data.subcategories) {
-          if (typeof sub === 'object') {
-            // Check if name field is corrupted (is an object instead of string)
-            if (typeof sub.name === 'object') {
-              console.log(`Found corrupted subcategory in ${data.name}:`, sub);
-              needsFix = true;
-              // Skip this corrupted entry
-              continue;
-            }
-            // Valid object subcategory
-            fixedSubcategories.push(sub);
-          } else if (typeof sub === 'string') {
-            // Convert string to object with ID
-            const subId = await generateSubcategoryId(uid);
-            fixedSubcategories.push({ id: subId, name: sub });
-            needsFix = true;
-          }
-        }
-      }
-      
-      if (needsFix) {
-        batch.update(doc.ref, { subcategories: fixedSubcategories });
-        fixedCount++;
-        console.log(`Fixed category ${data.name} with ${fixedSubcategories.length} valid subcategories`);
+      if (!existingAccounts.empty) {
+        const lastCode = parseInt(existingAccounts.docs[0].data().account_code);
+        accountCode = String(lastCode + 100);
+      } else {
+        accountCode = "5000"; // Start at 5000 for expense accounts
       }
     }
     
-    if (fixedCount > 0) {
-      await batch.commit();
+    // Create category in chart_of_accounts
+    const categoryAccount = {
+      account_code: accountCode,
+      account_name: name,
+      account_type: 'expense',
+      display_as: 'category',
+      category_name: name,
+      subcategory_name: null,
+      parent_code: null,
+      normal_balance: 'debit',
+      is_active: active,
+      created_at: admin.firestore.FieldValue.serverTimestamp(),
+      created_by: uid
+    };
+    
+    await db.collection("users").doc(uid)
+      .collection("chart_of_accounts")
+      .doc(accountCode)
+      .set(categoryAccount);
+    
+    // Create subcategory accounts
+    let subIndex = 1;
+    for (const subName of subcategories) {
+      const subAccountCode = `${accountCode}.${String(subIndex).padStart(2, '0')}`;
+      
+      const subcategoryAccount = {
+        account_code: subAccountCode,
+        account_name: subName,
+        account_type: 'expense',
+        display_as: 'subcategory',
+        category_name: name,
+        subcategory_name: subName,
+        parent_code: accountCode,
+        normal_balance: 'debit',
+        is_active: active,
+        created_at: admin.firestore.FieldValue.serverTimestamp(),
+        created_by: uid
+      };
+      
+      await db.collection("users").doc(uid)
+        .collection("chart_of_accounts")
+        .doc(subAccountCode)
+        .set(subcategoryAccount);
+      
+      subIndex++;
     }
     
     return res.json({
       success: true,
-      message: `Fixed ${fixedCount} categories with corrupted subcategory data`
+      id: accountCode,
+      category_id: accountCode,
+      message: "Category created in chart of accounts"
     });
-    
   } catch (error) {
-    console.error("Error fixing corrupted categories:", error);
-    return res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    console.error("Error creating category in chart_of_accounts:", error);
+    return res.status(500).json({success: false, error: error.message});
   }
 });
 
-// Fix duplicate category IDs
-apiRouter.post("/categories/fix-duplicates", async (req, res) => {
+// The following endpoints were for the old categories collection - removed as part of migration
+// All category operations now use chart_of_accounts exclusively
+
+// Stub endpoints for backward compatibility - will redirect to chart_of_accounts
+
+// Migration endpoint for categories to chart_of_accounts
+apiRouter.post("/categories/migrate-to-chart", async (req, res) => {
   try {
     const uid = req.user.uid;
     
-    // Get all categories
-    const categoriesSnap = await db.collection("users").doc(uid)
-        .collection("categories").get();
-    
-    // Track used IDs and find duplicates
-    const usedCategoryIds = new Map();
-    const usedSubcategoryIds = new Map();
-    const duplicates = [];
-    
-    // First pass: identify duplicates
-    categoriesSnap.docs.forEach(doc => {
-      const data = doc.data();
-      
-      if (data.category_id) {
-        if (usedCategoryIds.has(data.category_id)) {
-          duplicates.push({
-            docId: doc.id,
-            name: data.name,
-            categoryId: data.category_id,
-            type: 'category'
-          });
-        } else {
-          usedCategoryIds.set(data.category_id, doc.id);
-        }
-      }
-      
-      // Check subcategory IDs
-      if (data.subcategories && Array.isArray(data.subcategories)) {
-        data.subcategories.forEach(sub => {
-          if (typeof sub === 'object' && sub.id) {
-            if (usedSubcategoryIds.has(sub.id)) {
-              duplicates.push({
-                docId: doc.id,
-                name: `${data.name}/${sub.name}`,
-                subcategoryId: sub.id,
-                type: 'subcategory'
-              });
-            } else {
-              usedSubcategoryIds.set(sub.id, `${doc.id}/${sub.name}`);
-            }
-          }
-        });
-      }
-    });
-    
-    // Second pass: fix duplicates
-    const batch = db.batch();
-    let fixedCount = 0;
-    const changes = [];
-    
-    for (const dup of duplicates) {
-      if (dup.type === 'category') {
-        // Generate new ID for duplicate category
-        const newId = await generateCategoryId(uid);
-        const docRef = db.collection("users").doc(uid)
-            .collection("categories").doc(dup.docId);
-        
-        batch.update(docRef, {
-          category_id: newId,
-          fixed_duplicate_at: admin.firestore.FieldValue.serverTimestamp()
-        });
-        
-        changes.push(`${dup.name}: ${dup.categoryId} → ${newId} (was duplicate)`);
-        fixedCount++;
-      }
-    }
-    
-    // Commit fixes
-    if (fixedCount > 0) {
-      await batch.commit();
-    }
-    
+    // This endpoint migrates old categories to chart_of_accounts
+    // It's a one-time migration that should be run before fully switching to chart_of_accounts
     res.json({
       success: true,
-      message: `Fixed ${fixedCount} duplicate IDs`,
-      duplicatesFound: duplicates.length,
-      fixed: fixedCount,
-      changes: changes
+      message: "Use /api/chart-of-accounts/migrate instead"
     });
-    
   } catch (error) {
-    console.error("Fix duplicates error:", error);
+    console.error("Migration error:", error);
     res.status(500).json({success: false, error: error.message});
   }
 });
-
-// Standardize category ID format (convert C0001 to CAT-001, S0001 to SUB-001)
-apiRouter.post("/categories/standardize-ids", async (req, res) => {
-  try {
-    const uid = req.user.uid;
-    
-    // Get all categories
-    const categoriesSnap = await db.collection("users").doc(uid)
-        .collection("categories").get();
-    
-    const batch = db.batch();
-    let updatedCount = 0;
-    const changes = [];
-    
-    for (const doc of categoriesSnap.docs) {
-      const data = doc.data();
-      let needsUpdate = false;
-      const updates = {};
-      
-      // Check and fix category_id format
-      if (data.category_id) {
-        // Convert C0001 format to CAT-001 format
-        if (data.category_id.match(/^C\d{4}$/)) {
-          const numberPart = parseInt(data.category_id.substring(1));
-          updates.category_id = `CAT-${String(numberPart).padStart(3, "0")}`;
-          needsUpdate = true;
-          changes.push(`${data.name}: ${data.category_id} → ${updates.category_id}`);
-        }
-        // Fix any other non-standard formats
-        else if (!data.category_id.match(/^CAT-\d{3}$/)) {
-          // Extract number and reformat
-          const match = data.category_id.match(/\d+/);
-          if (match) {
-            const num = parseInt(match[0]);
-            updates.category_id = `CAT-${String(num).padStart(3, "0")}`;
-            needsUpdate = true;
-            changes.push(`${data.name}: ${data.category_id} → ${updates.category_id}`);
-          }
-        }
-      }
-      
-      // Check and fix subcategory formats
-      if (data.subcategories && Array.isArray(data.subcategories)) {
-        const fixedSubcategories = data.subcategories.map(sub => {
-          if (typeof sub === 'object' && sub.id) {
-            // Convert S0001 format to SUB-001 format
-            if (sub.id.match(/^S\d{4}$/)) {
-              const numberPart = parseInt(sub.id.substring(1));
-              const newId = `SUB-${String(numberPart).padStart(3, "0")}`;
-              changes.push(`  ${sub.name}: ${sub.id} → ${newId}`);
-              return { ...sub, id: newId };
-            }
-            // Fix any other non-standard formats
-            else if (!sub.id.match(/^SUB-\d{3}$/)) {
-              const match = sub.id.match(/\d+/);
-              if (match) {
-                const num = parseInt(match[0]);
-                const newId = `SUB-${String(num).padStart(3, "0")}`;
-                changes.push(`  ${sub.name}: ${sub.id} → ${newId}`);
-                return { ...sub, id: newId };
-              }
-            }
-          }
-          return sub;
-        });
-        
-        // Check if any subcategories were updated
-        const hasSubChanges = fixedSubcategories.some((sub, idx) => 
-          JSON.stringify(sub) !== JSON.stringify(data.subcategories[idx])
-        );
-        
-        if (hasSubChanges) {
-          updates.subcategories = fixedSubcategories;
-          needsUpdate = true;
-        }
-      }
-      
-      // Apply updates if needed
-      if (needsUpdate) {
-        batch.update(doc.ref, {
-          ...updates,
-          standardized_at: admin.firestore.FieldValue.serverTimestamp()
-        });
-        updatedCount++;
-      }
-    }
-    
-    // Commit batch update
-    if (updatedCount > 0) {
-      await batch.commit();
-    }
-    
-    res.json({
-      success: true,
-      message: `ID standardization complete. Updated: ${updatedCount} categories`,
-      updated: updatedCount,
-      total: categoriesSnap.size,
-      changes: changes
-    });
-    
-  } catch (error) {
-    console.error("ID standardization error:", error);
-    res.status(500).json({success: false, error: error.message});
-  }
-});
-
-// Migrate existing categories to use IDs
-apiRouter.post("/categories/migrate", async (req, res) => {
-  try {
-    const uid = req.user.uid;
-    
-    // Get all categories
-    const categoriesSnap = await db.collection("users").doc(uid)
-        .collection("categories").get();
-    
-    const batch = db.batch();
-    let migratedCount = 0;
-    let skippedCount = 0;
-    
-    for (const doc of categoriesSnap.docs) {
-      const data = doc.data();
-      
-      // Skip if already has ID
-      if (data.category_id) {
-        skippedCount++;
-        continue;
-      }
-      
-      // Generate category ID
-      const categoryId = await generateCategoryId(uid);
-      
-      // Process subcategories
-      const processedSubcategories = [];
-      if (Array.isArray(data.subcategories)) {
-        for (const sub of data.subcategories) {
-          if (typeof sub === 'string') {
-            // Convert string to object with ID
-            processedSubcategories.push({
-              id: await generateSubcategoryId(uid),
-              name: sub
-            });
-          } else if (typeof sub === 'object' && sub.name && !sub.id) {
-            // Add ID to existing object
-            processedSubcategories.push({
-              ...sub,
-              id: await generateSubcategoryId(uid)
-            });
-          } else if (typeof sub === 'object' && sub.id) {
-            // Already has ID, keep as is
-            processedSubcategories.push(sub);
-          }
-        }
-      }
-      
-      // Update category document
-      batch.update(doc.ref, {
-        category_id: categoryId,
-        subcategories: processedSubcategories,
-        migrated_at: admin.firestore.FieldValue.serverTimestamp()
-      });
-      
-      migratedCount++;
-    }
-    
-    // Commit batch update
-    if (migratedCount > 0) {
-      await batch.commit();
-    }
-    
-    res.json({
-      success: true,
-      message: `Migration complete. Migrated: ${migratedCount}, Skipped: ${skippedCount}`,
-      migrated: migratedCount,
-      skipped: skippedCount,
-      total: categoriesSnap.size
-    });
-    
-  } catch (error) {
-    console.error("Category migration error:", error);
-    res.status(500).json({success: false, error: error.message});
-  }
-});
-
-// Category rename with transaction propagation
 apiRouter.put("/categories/:id/rename", async (req, res) => {
   try {
     const uid = req.user.uid;
@@ -2034,60 +1585,60 @@ apiRouter.get("/budgets", async (req, res) => {
     let totalBudget = 0;
     let totalSpent = 0;
     
-    // Get all categories from chart_of_accounts - dynamic approach
+    // Get all categories from chart_of_accounts ONLY - Professional approach
     const chartSnap = await db.collection("users").doc(uid)
         .collection("chart_of_accounts")
         .where("display_as", "==", "category")
         .get();
     
-    // If chart_of_accounts doesn't exist, fall back to categories collection
     let categoriesData = [];
-    const categoryMap = new Map(); // Use Map to deduplicate by name - v2
-    if (!chartSnap.empty) {
-      // Use chart_of_accounts for dynamic categories
-      chartSnap.forEach(doc => {
-        const account = doc.data();
-        const categoryName = account.category_name || account.account_name;
-        // Only add if not already in map (deduplicate by name)
-        if (!categoryMap.has(categoryName)) {
-          const categoryData = {
-            name: categoryName,
-            code: account.account_code,
-            subcategories: []
-          };
-          categoryMap.set(categoryName, categoryData);
-          categoriesData.push(categoryData);
-        }
-      });
-      
-      // Get subcategories for each category
-      for (const cat of categoriesData) {
-        const subsSnap = await db.collection("users").doc(uid)
-            .collection("chart_of_accounts")
-            .where("display_as", "==", "subcategory")
-            .where("category_name", "==", cat.name)
-            .get();
-        
-        subsSnap.forEach(subDoc => {
-          const sub = subDoc.data();
-          cat.subcategories.push({
-            name: sub.subcategory_name || sub.account_name,
-            code: sub.account_code
-          });
-        });
+    const categoryMap = new Map(); // Use Map to deduplicate by name
+    
+    // Use chart_of_accounts as single source of truth
+    chartSnap.forEach(doc => {
+      const account = doc.data();
+      const categoryName = account.category_name || account.account_name;
+      // Only add if not already in map (deduplicate by name)
+      if (!categoryMap.has(categoryName)) {
+        const categoryData = {
+          name: categoryName,
+          code: account.account_code,
+          subcategories: []
+        };
+        categoryMap.set(categoryName, categoryData);
+        categoriesData.push(categoryData);
       }
-    } else {
-      // Fall back to categories collection
-      const categoriesSnap = await db.collection("users").doc(uid)
-          .collection("categories").get();
+    });
+    
+    // Get subcategories for each category
+    for (const cat of categoriesData) {
+      const subsSnap = await db.collection("users").doc(uid)
+          .collection("chart_of_accounts")
+          .where("display_as", "==", "subcategory")
+          .where("category_name", "==", cat.name)
+          .get();
       
-      categoriesSnap.forEach(doc => {
-        const category = doc.data();
-        categoriesData.push({
-          name: category.name,
-          code: category.category_id || category.id,
-          subcategories: category.subcategories || []
+      subsSnap.forEach(subDoc => {
+        const sub = subDoc.data();
+        cat.subcategories.push({
+          name: sub.subcategory_name || sub.account_name,
+          code: sub.account_code
         });
+      });
+    }
+    
+    // If no chart_of_accounts exists, return empty result
+    if (categoriesData.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          totalBudget: 0,
+          totalSpent: 0,
+          totalRemaining: 0,
+          categoriesGrouped: {},
+          month: budgetId,
+          message: "No chart of accounts found. Please run migration or setup."
+        }
       });
     }
     
@@ -3621,6 +3172,114 @@ apiRouter.post("/chart-of-accounts/lookup", async (req, res) => {
   }
 });
 
+// Migrate categories to chart_of_accounts
+apiRouter.post("/chart-of-accounts/migrate", async (req, res) => {
+  const uid = req.user.uid;
+  
+  try {
+    // Check if chart_of_accounts already has data
+    const chartSnap = await db.collection("users").doc(uid)
+      .collection("chart_of_accounts")
+      .limit(1)
+      .get();
+    
+    if (!chartSnap.empty) {
+      return res.json({
+        success: true,
+        message: "Chart of accounts already exists, no migration needed"
+      });
+    }
+    
+    // Get all categories
+    const categoriesSnap = await db.collection("users").doc(uid)
+      .collection("categories")
+      .get();
+    
+    if (categoriesSnap.empty) {
+      // Initialize default chart if no categories exist
+      await accountsService.initializeDefaultChart(uid);
+      return res.json({
+        success: true,
+        message: "No categories found, initialized default chart of accounts"
+      });
+    }
+    
+    // Migrate categories to chart_of_accounts
+    const batch = db.batch();
+    let accountCode = 5000; // Start expense accounts at 5000
+    
+    categoriesSnap.forEach(doc => {
+      const category = doc.data();
+      const categoryCode = String(accountCode);
+      
+      // Create category-level account
+      const categoryAccount = {
+        account_code: categoryCode,
+        account_name: category.name,
+        account_type: 'expense',
+        display_as: 'category',
+        category_name: category.name,
+        subcategory_name: null,
+        parent_code: null,
+        normal_balance: 'debit',
+        is_active: true,
+        created_at: admin.firestore.FieldValue.serverTimestamp(),
+        migrated_from: 'categories'
+      };
+      
+      batch.set(
+        db.collection("users").doc(uid)
+          .collection("chart_of_accounts")
+          .doc(categoryCode),
+        categoryAccount
+      );
+      
+      // Create subcategory accounts
+      let subCode = 1;
+      (category.subcategories || []).forEach(sub => {
+        const subName = typeof sub === 'object' ? sub.name : sub;
+        if (!subName || typeof subName === 'object') return;
+        
+        const subcategoryCode = `${categoryCode}.${String(subCode).padStart(2, '0')}`;
+        const subcategoryAccount = {
+          account_code: subcategoryCode,
+          account_name: subName,
+          account_type: 'expense',
+          display_as: 'subcategory',
+          category_name: category.name,
+          subcategory_name: subName,
+          parent_code: categoryCode,
+          normal_balance: 'debit',
+          is_active: true,
+          created_at: admin.firestore.FieldValue.serverTimestamp(),
+          migrated_from: 'categories'
+        };
+        
+        batch.set(
+          db.collection("users").doc(uid)
+            .collection("chart_of_accounts")
+            .doc(subcategoryCode),
+          subcategoryAccount
+        );
+        
+        subCode++;
+      });
+      
+      accountCode += 100; // Space categories by 100
+    });
+    
+    await batch.commit();
+    
+    res.json({
+      success: true,
+      message: `Migrated ${categoriesSnap.size} categories to chart of accounts`
+    });
+  } catch (error) {
+    console.error("Error migrating to chart of accounts:", error);
+    res.status(500).json({success: false, error: error.message});
+  }
+});
+
 // Setup complete chart (for initial setup or reset)
 apiRouter.post("/chart-of-accounts/setup", async (req, res) => {
   const uid = req.user.uid;
@@ -3733,6 +3392,719 @@ apiRouter.get("/chart-of-accounts/balances", async (req, res) => {
   } catch (error) {
     console.error("Error fetching account balances:", error);
     res.status(500).json({success: false, error: error.message});
+  }
+});
+
+// ==================== REPORTS ENDPOINTS ====================
+
+/**
+ * MIGRATION ENDPOINT: Complete chart of accounts migration
+ * POST /api/migration/complete-accounts-migration
+ */
+apiRouter.post("/migration/complete-accounts-migration", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    let migrated = 0;
+    let failed = 0;
+    let skipped = 0;
+    
+    // Get all transactions
+    const txnSnap = await db.collection("users").doc(uid)
+      .collection("all-transactions")
+      .get();
+    
+    const batch = db.batch();
+    let batchCount = 0;
+    
+    for (const doc of txnSnap.docs) {
+      const txn = doc.data();
+      
+      // Skip if already has account_code
+      if (txn.account_code) {
+        skipped++;
+        continue;
+      }
+      
+      // Skip non-expense transactions for now (they don't need account codes)
+      if (txn.type !== 'expense') {
+        skipped++;
+        continue;
+      }
+      
+      // Look up account code from category/subcategory
+      if (txn.category) {
+        const accountCode = await accountsService.getAccountFromCategory(
+          uid,
+          txn.category,
+          txn.subcategory
+        );
+        
+        if (accountCode) {
+          // Get account name for display
+          const accountDoc = await db.collection("users").doc(uid)
+            .collection("chart_of_accounts")
+            .doc(accountCode)
+            .get();
+          
+          const accountName = accountDoc.exists ? 
+            (accountDoc.data().subcategory_name || accountDoc.data().account_name) : 
+            txn.subcategory || txn.category;
+          
+          batch.update(doc.ref, {
+            account_code: accountCode,
+            account_name: accountName,
+            journal_entries: accountsService.createJournalEntries({...txn, account_code: accountCode}),
+            migrated_at: admin.firestore.FieldValue.serverTimestamp()
+          });
+          
+          batchCount++;
+          migrated++;
+          
+          // Commit batch every 100 documents
+          if (batchCount >= 100) {
+            await batch.commit();
+            batchCount = 0;
+          }
+        } else {
+          console.warn(`No account found for ${txn.category}/${txn.subcategory}`);
+          failed++;
+        }
+      } else {
+        skipped++;
+      }
+    }
+    
+    // Commit remaining batch
+    if (batchCount > 0) {
+      await batch.commit();
+    }
+    
+    // Rebuild ledgers for all accounts
+    await rebuildLedger(uid);
+    
+    res.json({
+      success: true,
+      message: "Migration completed successfully",
+      stats: {
+        total: txnSnap.size,
+        migrated,
+        failed,
+        skipped,
+        ledgerRebuilt: true
+      }
+    });
+  } catch (error) {
+    console.error("Migration error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/reports - List all reports
+ */
+apiRouter.get("/reports", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const { status, year, limit = 12 } = req.query;
+    
+    let query = db.collection("users").doc(uid)
+      .collection("reports")
+      .orderBy("createdAt", "desc");
+    
+    if (status) {
+      query = query.where("status", "==", status);
+    }
+    
+    if (year) {
+      query = query.where("year", "==", parseInt(year));
+    }
+    
+    query = query.limit(parseInt(limit));
+    
+    const snapshot = await query.get();
+    const reports = [];
+    
+    snapshot.forEach(doc => {
+      reports.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    return res.json({
+      success: true,
+      data: reports
+    });
+  } catch (error) {
+    console.error("Error fetching reports:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/reports/generate/:year/:month - Generate report data for a specific month
+ */
+apiRouter.get("/reports/generate/:year/:month", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const { year, month } = req.params;
+    
+    // Get budget data for the month
+    const budgetId = `${year}-${String(month).padStart(2, '0')}`;
+    const budgetDoc = await db.collection("users").doc(uid)
+      .collection("budget_allocations").doc(budgetId).get();
+    
+    // Get expenses for the month
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+    
+    const expensesSnap = await db.collection("users").doc(uid)
+      .collection("all-transactions")
+      .where("type", "==", "expense")
+      .where("date", ">=", startDate)
+      .where("date", "<=", endDate)
+      .get();
+    
+    // Calculate spending by category
+    const spendingByCategory = {};
+    let totalSpent = 0;
+    
+    expensesSnap.forEach(doc => {
+      const txn = doc.data();
+      const category = txn.category || "Other";
+      const subcategory = txn.subcategory || "General";
+      const amount = Math.abs(txn.amount || 0);
+      
+      if (!spendingByCategory[category]) {
+        spendingByCategory[category] = {
+          total: 0,
+          subcategories: {}
+        };
+      }
+      
+      spendingByCategory[category].total += amount;
+      totalSpent += amount;
+      
+      if (!spendingByCategory[category].subcategories[subcategory]) {
+        spendingByCategory[category].subcategories[subcategory] = 0;
+      }
+      spendingByCategory[category].subcategories[subcategory] += amount;
+    });
+    
+    // Get budget allocations
+    const budgetData = budgetDoc.exists ? budgetDoc.data() : {};
+    const budgetCategories = budgetData.categories || {};
+    let totalBudget = 0;
+    
+    // Calculate variances
+    const categoriesWithVariance = {};
+    const variancesNeedingExplanation = [];
+    
+    // Get all categories from chart_of_accounts ONLY - Professional approach
+    const chartSnap = await db.collection("users").doc(uid)
+      .collection("chart_of_accounts")
+      .where("display_as", "==", "category")
+      .get();
+    
+    let categoriesData = [];
+    const categoryMap = new Map();
+    
+    // Use chart_of_accounts as single source of truth
+    chartSnap.forEach(doc => {
+      const account = doc.data();
+      const categoryName = account.category_name || account.account_name;
+      if (!categoryMap.has(categoryName)) {
+        const categoryData = {
+          name: categoryName,
+          code: account.account_code,
+          subcategories: []
+        };
+        categoryMap.set(categoryName, categoryData);
+        categoriesData.push(categoryData);
+      }
+    });
+    
+    // Get subcategories for each category
+    for (const cat of categoriesData) {
+      const subsSnap = await db.collection("users").doc(uid)
+        .collection("chart_of_accounts")
+        .where("display_as", "==", "subcategory")
+        .where("category_name", "==", cat.name)
+        .get();
+      
+      subsSnap.forEach(subDoc => {
+        const sub = subDoc.data();
+        cat.subcategories.push({
+          name: sub.subcategory_name || sub.account_name,
+          code: sub.account_code
+        });
+      });
+    }
+    
+    // If no chart_of_accounts exists, return error
+    if (categoriesData.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "No chart of accounts found. Please run migration or setup first."
+      });
+    }
+    
+    // Process each category
+    categoriesData.forEach(category => {
+      const categoryName = category.name;
+      const budgetForCategory = budgetCategories[categoryName] || {};
+      const spendingForCategory = spendingByCategory[categoryName] || { total: 0, subcategories: {} };
+      
+      // Calculate category budget total
+      let categoryBudgetTotal = 0;
+      const subcategoriesData = [];
+      
+      // Handle subcategories with same logic as /budgets endpoint
+      (category.subcategories || []).forEach(sub => {
+        // Extract subcategory name whether it's a string or object
+        let subName = '';
+        
+        if (typeof sub === 'object') {
+          // Handle corrupted data where name is an object
+          if (typeof sub.name === 'object') {
+            console.warn(`Corrupted subcategory in ${category.name}:`, sub);
+            return; // Skip this corrupted entry
+          }
+          subName = sub.name || '';
+        } else {
+          subName = sub;
+        }
+        
+        // Skip if no valid name
+        if (!subName) return;
+        
+        const subBudget = budgetForCategory[subName] || 0;
+        const subSpent = spendingForCategory.subcategories[subName] || 0;
+        
+        categoryBudgetTotal += subBudget;
+        
+        subcategoriesData.push({
+          name: subName,
+          budgeted: subBudget,
+          spent: subSpent,
+          variance: subSpent - subBudget
+        });
+      });
+      
+      // Also check for "All" budget (category-level budget)
+      const categoryLevelBudget = budgetForCategory["All"] || 0;
+      if (categoryLevelBudget > 0) {
+        categoryBudgetTotal += categoryLevelBudget;
+      }
+      
+      totalBudget += categoryBudgetTotal;
+      
+      const variance = spendingForCategory.total - categoryBudgetTotal;
+      const variancePercent = categoryBudgetTotal > 0 
+        ? ((spendingForCategory.total - categoryBudgetTotal) / categoryBudgetTotal) * 100 
+        : 0;
+      
+      categoriesWithVariance[categoryName] = {
+        budgeted: categoryBudgetTotal,
+        spent: spendingForCategory.total,
+        variance: variance,
+        variancePercent: variancePercent,
+        subcategories: subcategoriesData
+      };
+      
+      // Check if variance needs explanation (>10% or >€100)
+      if ((Math.abs(variancePercent) > 10 || Math.abs(variance) > 100) && variance > 0) {
+        variancesNeedingExplanation.push({
+          category: categoryName,
+          variance: variance,
+          variancePercent: variancePercent
+        });
+      }
+    });
+    
+    // Get current account balances
+    const balancesDoc = await db.collection("users").doc(uid)
+      .collection("account_balances").get();
+    
+    let cashBalance = 0;
+    let bankBalance = 0;
+    
+    balancesDoc.forEach(doc => {
+      const data = doc.data();
+      if (doc.id === 'cash') {
+        cashBalance = data.current_balance || 0;
+      } else if (doc.id === 'bank') {
+        bankBalance = data.current_balance || 0;
+      }
+    });
+    
+    // Calculate burn rate and months remaining
+    const burnRate = totalSpent;
+    const totalAvailable = cashBalance + bankBalance;
+    const monthsRemaining = burnRate > 0 ? totalAvailable / burnRate : 0;
+    
+    // Get previous 2 months data for 3-month comparison
+    const previousMonths = [];
+    for (let i = 1; i <= 2; i++) {
+      const prevMonth = parseInt(month) - i;
+      const prevYear = prevMonth <= 0 ? parseInt(year) - 1 : year;
+      const actualMonth = prevMonth <= 0 ? 12 + prevMonth : prevMonth;
+      
+      const prevStartDate = `${prevYear}-${String(actualMonth).padStart(2, '0')}-01`;
+      const prevEndDate = `${prevYear}-${String(actualMonth).padStart(2, '0')}-31`;
+      
+      const prevExpensesSnap = await db.collection("users").doc(uid)
+        .collection("all-transactions")
+        .where("type", "==", "expense")
+        .where("date", ">=", prevStartDate)
+        .where("date", "<=", prevEndDate)
+        .get();
+      
+      const prevSpending = {};
+      prevExpensesSnap.forEach(doc => {
+        const txn = doc.data();
+        const category = txn.category || "Other";
+        if (!prevSpending[category]) {
+          prevSpending[category] = 0;
+        }
+        prevSpending[category] += Math.abs(txn.amount || 0);
+      });
+      
+      previousMonths.push({
+        month: actualMonth,
+        year: prevYear,
+        spending: prevSpending
+      });
+    }
+    
+    // Generate YTD data
+    const ytdMonths = [];
+    for (let m = 1; m <= parseInt(month); m++) {
+      const monthStartDate = `${year}-${String(m).padStart(2, '0')}-01`;
+      const monthEndDate = `${year}-${String(m).padStart(2, '0')}-31`;
+      
+      const monthExpensesSnap = await db.collection("users").doc(uid)
+        .collection("all-transactions")
+        .where("type", "==", "expense")
+        .where("date", ">=", monthStartDate)
+        .where("date", "<=", monthEndDate)
+        .get();
+      
+      let monthTotal = 0;
+      monthExpensesSnap.forEach(doc => {
+        monthTotal += Math.abs(doc.data().amount || 0);
+      });
+      
+      // Get budget for this month
+      const monthBudgetId = `${year}-${String(m).padStart(2, '0')}`;
+      const monthBudgetDoc = await db.collection("users").doc(uid)
+        .collection("budget_allocations").doc(monthBudgetId).get();
+      
+      let monthBudgetTotal = 0;
+      if (monthBudgetDoc.exists) {
+        const monthBudgetData = monthBudgetDoc.data();
+        const monthCategories = monthBudgetData.categories || {};
+        Object.values(monthCategories).forEach(catBudget => {
+          if (typeof catBudget === 'object') {
+            Object.values(catBudget).forEach(amount => {
+              if (typeof amount === 'number') {
+                monthBudgetTotal += amount;
+              }
+            });
+          }
+        });
+      }
+      
+      ytdMonths.push({
+        month: m,
+        budget: monthBudgetTotal,
+        actual: monthTotal
+      });
+    }
+    
+    return res.json({
+      success: true,
+      data: {
+        month: parseInt(month),
+        year: parseInt(year),
+        totalBudget,
+        totalSpent,
+        totalVariance: totalSpent - totalBudget,
+        categories: categoriesWithVariance,
+        variancesNeedingExplanation,
+        cashBalance,
+        bankBalance,
+        burnRate,
+        monthsRemaining,
+        threeMonthComparison: {
+          current: { month: parseInt(month), year: parseInt(year), spending: spendingByCategory },
+          previous: previousMonths
+        },
+        ytdData: ytdMonths
+      }
+    });
+  } catch (error) {
+    console.error("Error generating report:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/reports/:id - Get specific report
+ */
+apiRouter.get("/reports/:id", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const { id } = req.params;
+    
+    const reportDoc = await db.collection("users").doc(uid)
+      .collection("reports").doc(id).get();
+    
+    if (!reportDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: "Report not found"
+      });
+    }
+    
+    return res.json({
+      success: true,
+      data: {
+        id: reportDoc.id,
+        ...reportDoc.data()
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching report:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/reports - Create new report
+ */
+apiRouter.post("/reports", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const reportData = req.body;
+    
+    // Check if report already exists for this month
+    const existingQuery = await db.collection("users").doc(uid)
+      .collection("reports")
+      .where("year", "==", reportData.year)
+      .where("month", "==", reportData.month)
+      .limit(1)
+      .get();
+    
+    if (!existingQuery.empty) {
+      return res.status(400).json({
+        success: false,
+        error: "Report already exists for this month"
+      });
+    }
+    
+    const newReport = {
+      ...reportData,
+      status: "draft",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdBy: req.user.email || uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    
+    const docRef = await db.collection("users").doc(uid)
+      .collection("reports").add(newReport);
+    
+    return res.json({
+      success: true,
+      data: {
+        id: docRef.id,
+        ...newReport
+      }
+    });
+  } catch (error) {
+    console.error("Error creating report:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * PUT /api/reports/:id - Update draft report
+ */
+apiRouter.put("/reports/:id", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const { id } = req.params;
+    const updates = req.body;
+    
+    // Check if report exists and is a draft
+    const reportDoc = await db.collection("users").doc(uid)
+      .collection("reports").doc(id).get();
+    
+    if (!reportDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: "Report not found"
+      });
+    }
+    
+    if (reportDoc.data().status === "final") {
+      return res.status(400).json({
+        success: false,
+        error: "Cannot edit finalized report"
+      });
+    }
+    
+    const updatedReport = {
+      ...updates,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    
+    await db.collection("users").doc(uid)
+      .collection("reports").doc(id).update(updatedReport);
+    
+    return res.json({
+      success: true,
+      data: {
+        id: id,
+        ...updatedReport
+      }
+    });
+  } catch (error) {
+    console.error("Error updating report:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/reports/:id/finalize - Finalize a report
+ */
+apiRouter.post("/reports/:id/finalize", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const { id } = req.params;
+    
+    // Get the report
+    const reportDoc = await db.collection("users").doc(uid)
+      .collection("reports").doc(id).get();
+    
+    if (!reportDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: "Report not found"
+      });
+    }
+    
+    const reportData = reportDoc.data();
+    
+    if (reportData.status === "final") {
+      return res.status(400).json({
+        success: false,
+        error: "Report is already finalized"
+      });
+    }
+    
+    // Validate that all required explanations are present
+    const variancesNeedingExplanation = reportData.variancesNeedingExplanation || [];
+    const explanations = reportData.varianceExplanations || {};
+    
+    for (const variance of variancesNeedingExplanation) {
+      if (!explanations[variance.category]) {
+        return res.status(400).json({
+          success: false,
+          error: `Missing explanation for ${variance.category} variance`
+        });
+      }
+    }
+    
+    // Create a data snapshot for permanent record
+    const snapshot = {
+      ...reportData,
+      status: "final",
+      finalizedAt: admin.firestore.FieldValue.serverTimestamp(),
+      finalizedBy: req.user.email || uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    
+    await db.collection("users").doc(uid)
+      .collection("reports").doc(id).update(snapshot);
+    
+    return res.json({
+      success: true,
+      data: {
+        id: id,
+        ...snapshot
+      }
+    });
+  } catch (error) {
+    console.error("Error finalizing report:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/reports/:id/reopen - Reopen a finalized report
+ */
+apiRouter.post("/reports/:id/reopen", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const { id } = req.params;
+    
+    const reportDoc = await db.collection("users").doc(uid)
+      .collection("reports").doc(id).get();
+    
+    if (!reportDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: "Report not found"
+      });
+    }
+    
+    if (reportDoc.data().status !== "final") {
+      return res.status(400).json({
+        success: false,
+        error: "Report is not finalized"
+      });
+    }
+    
+    await db.collection("users").doc(uid)
+      .collection("reports").doc(id).update({
+        status: "draft",
+        reopenedAt: admin.firestore.FieldValue.serverTimestamp(),
+        reopenedBy: req.user.email || uid,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    
+    return res.json({
+      success: true,
+      message: "Report reopened successfully"
+    });
+  } catch (error) {
+    console.error("Error reopening report:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 

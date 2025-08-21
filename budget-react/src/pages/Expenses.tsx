@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Plus, 
   Calendar, 
@@ -11,6 +11,8 @@ import {
   ChevronDown,
   ArrowUpDown
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { TransactionService } from '../services/TransactionService';
 import AddExpenseModal from '../components/modals/AddExpenseModal';
 import EditExpenseModal from '../components/modals/EditExpenseModal';
 import DeleteConfirmationModal from '../components/modals/DeleteConfirmationModal';
@@ -23,8 +25,8 @@ interface Expense {
   id: string;
   date: string;
   transactionNumber: string;
-  category: string;
-  subcategory: string;
+  category: string;  // Will be mapped to account
+  subcategory: string;  // Will be mapped to sub-account
   description: string;
   amount: number;
   paymentMethod: string;
@@ -44,53 +46,67 @@ const Expenses: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedSubcategory, setSelectedSubcategory] = useState('all');
+  const [selectedAccount, setSelectedAccount] = useState('all');
+  const [selectedSubAccount, setSelectedSubAccount] = useState('all');
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('all');
   
   // Sorting states
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  // Dummy data
-  const expenses: Expense[] = [
-    {
-      id: '1',
-      date: '2025-08-19',
-      transactionNumber: '2025-00096',
-      category: 'Facility',
-      subcategory: 'Rent',
-      description: 'Test expense with Chart of Accounts',
-      amount: 250.00,
-      paymentMethod: 'Cash',
-      receipt: 'receipt1.pdf'
-    },
-    {
-      id: '2',
-      date: '2025-08-18',
-      transactionNumber: '2025-00095',
-      category: 'Administration',
-      subcategory: 'Test',
-      description: 'Test transaction for Category ID system',
-      amount: 99.99,
-      paymentMethod: 'Card',
-    },
-    {
-      id: '3',
-      date: '2025-08-18',
-      transactionNumber: '2025-00087',
-      category: 'Administration',
-      subcategory: 'Insurance',
-      description: 'TEST TEST TEST',
-      amount: 100.00,
-      paymentMethod: 'Cash',
-    },
-  ];
+  // Initialize dates for past 30 days
+  useEffect(() => {
+    const today = new Date();
+    const past30 = new Date(today);
+    past30.setDate(past30.getDate() - 30);
+    setStartDate(past30.toISOString().split('T')[0]);
+    setEndDate(today.toISOString().split('T')[0]);
+  }, []);
 
-  const categories = [
-    { id: 'facility', name: 'Facility', subcategories: ['Rent', 'Utilities', 'Maintenance'] },
-    { id: 'administration', name: 'Administration', subcategories: ['Test', 'Insurance', 'Office Supplies'] },
-  ];
+  // Fetch expenses from API
+  const { data: expensesData, isLoading: loadingExpenses } = useQuery({
+    queryKey: ['expenses', startDate, endDate, selectedAccount],
+    queryFn: async () => {
+      const filters: any = {
+        type: 'expense',
+        limit: 1000
+      };
+      if (startDate) filters.startDate = startDate;
+      if (endDate) filters.endDate = endDate;
+      if (selectedAccount !== 'all') filters.category = selectedAccount;
+      
+      const transactions = await TransactionService.getList(filters);
+      // Transform to match Expense interface
+      return transactions.map((txn: any) => ({
+        id: txn.id || txn.transaction_id,
+        date: txn.date,
+        transactionNumber: txn.transaction_id || `TXN-${txn.id}`,
+        category: txn.category || 'Uncategorized',
+        subcategory: txn.subcategory || '',
+        description: txn.description || '',
+        amount: Math.abs(txn.amount),
+        paymentMethod: txn.paymentMethod || txn.payment_method || 'Cash',
+        receipt: txn.receipt_url
+      }));
+    },
+    enabled: true
+  });
+
+  // Fetch categories from API
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      const cats = await TransactionService.getCategories();
+      return cats.map((cat: any) => ({
+        id: cat.id || cat.name?.toLowerCase(),
+        name: cat.name,
+        subcategories: cat.subcategories || []
+      }));
+    }
+  });
+
+  const expenses = expensesData || [];
+  const categories = categoriesData || [];
 
   // Handle quick select change
   const handleQuickSelectChange = (value: string) => {
@@ -143,12 +159,12 @@ const Expenses: React.FC = () => {
       );
     }
     
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter(exp => exp.category.toLowerCase() === selectedCategory);
+    if (selectedAccount !== 'all') {
+      filtered = filtered.filter(exp => exp.category.toLowerCase() === selectedAccount);
     }
     
-    if (selectedSubcategory !== 'all') {
-      filtered = filtered.filter(exp => exp.subcategory.toLowerCase() === selectedSubcategory);
+    if (selectedSubAccount !== 'all') {
+      filtered = filtered.filter(exp => exp.subcategory.toLowerCase() === selectedSubAccount);
     }
     
     if (selectedPaymentMethod !== 'all') {
@@ -184,7 +200,7 @@ const Expenses: React.FC = () => {
     });
     
     return filtered;
-  }, [expenses, searchTerm, selectedCategory, selectedSubcategory, selectedPaymentMethod, sortField, sortDirection]);
+  }, [expenses, searchTerm, selectedAccount, selectedSubAccount, selectedPaymentMethod, sortField, sortDirection]);
 
   const totalAmount = filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0);
 
@@ -210,8 +226,8 @@ const Expenses: React.FC = () => {
     setStartDate('');
     setEndDate('');
     setSearchTerm('');
-    setSelectedCategory('all');
-    setSelectedSubcategory('all');
+    setSelectedAccount('all');
+    setSelectedSubAccount('all');
     setSelectedPaymentMethod('all');
   };
 
@@ -304,12 +320,12 @@ const Expenses: React.FC = () => {
 
         {/* Bottom Row of Filters */}
         <div className="grid grid-cols-12 gap-4">
-          {/* Category */}
+          {/* Account */}
           <div className="col-span-2">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Account</label>
             <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
+              value={selectedAccount}
+              onChange={(e) => setSelectedAccount(e.target.value)}
               className="w-full h-[38px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             >
               <option value="all">All</option>
@@ -319,17 +335,17 @@ const Expenses: React.FC = () => {
             </select>
           </div>
 
-          {/* Subcategory */}
+          {/* Sub-Account */}
           <div className="col-span-2">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Subcategory</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Sub-Account</label>
             <select
-              value={selectedSubcategory}
-              onChange={(e) => setSelectedSubcategory(e.target.value)}
+              value={selectedSubAccount}
+              onChange={(e) => setSelectedSubAccount(e.target.value)}
               className="w-full h-[38px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             >
               <option value="all">All</option>
-              {selectedCategory !== 'all' && 
-                categories.find(c => c.id === selectedCategory)?.subcategories.map(sub => (
+              {selectedAccount !== 'all' && 
+                categories.find(c => c.id === selectedAccount)?.subcategories.map((sub: string) => (
                   <option key={sub} value={sub.toLowerCase()}>{sub}</option>
                 ))
               }
@@ -352,9 +368,9 @@ const Expenses: React.FC = () => {
           </div>
 
           {/* Export Button */}
-          <div className="col-span-2">
+          <div className="col-span-1">
             <label className="block text-xs font-medium text-gray-700 mb-1">&nbsp;</label>
-            <button className="w-full h-[38px] px-3 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1">
+            <button className="w-full h-[38px] px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
               <Download className="w-4 h-4" />
               Export
             </button>
@@ -374,7 +390,7 @@ const Expenses: React.FC = () => {
           </div>
 
           {/* Results Summary */}
-          <div className="col-span-3">
+          <div className="col-span-4">
             <label className="block text-xs font-medium text-gray-700 mb-1">Results</label>
             <div className="w-full h-[38px] px-3 py-2 bg-gray-50 text-gray-600 rounded-lg text-sm flex items-center justify-center border border-gray-200">
               <span className="font-medium">{filteredExpenses.length}</span>&nbsp;expenses • 
@@ -413,7 +429,7 @@ const Expenses: React.FC = () => {
                     onClick={() => handleSort('category')}
                     className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center hover:text-gray-700"
                   >
-                    Category
+                    Account
                     <SortIcon field="category" />
                   </button>
                 </th>
@@ -452,7 +468,19 @@ const Expenses: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredExpenses.map((expense) => (
+              {loadingExpenses ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                    Loading expenses...
+                  </td>
+                </tr>
+              ) : filteredExpenses.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                    No expenses found for the selected filters
+                  </td>
+                </tr>
+              ) : filteredExpenses.map((expense) => (
                 <tr key={expense.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {expense.date}
