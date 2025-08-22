@@ -75,7 +75,8 @@
       "Bash(firebase apps:sdkconfig:*)",
       "Bash(firebase apps:list:*)",
       "Bash(sed:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "WebSearch"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Budget API</title>
+</head>
+<body>
+    <h1>Testing Budget API for August 2025</h1>
+    <button onclick="testAPI()">Test Report Generation API</button>
+    <pre id="output"></pre>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBBqKGJvV_fG0vSRlZIzdDN4isrfPQMDMo",
+            authDomain: "budget-v01.firebaseapp.com",
+            projectId: "budget-v01",
+            storageBucket: "budget-v01.appspot.com",
+            messagingSenderId: "305491896119",
+            appId: "1:305491896119:web:dda3091b088ea860a39e41",
+            measurementId: "G-QEMX5S0ELJ"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        window.testAPI = async function() {
+            const output = document.getElementById('output');
+            output.textContent = 'Testing...\n';
+            
+            try {
+                // Sign in
+                const userCredential = await signInAnonymously(auth);
+                const user = userCredential.user;
+                output.textContent += `Signed in as: ${user.uid}\n\n`;
+                
+                // Get ID token
+                const idToken = await user.getIdToken();
+                
+                // Test the report generation endpoint
+                const response = await fetch('https://budget-v01.web.app/api/reports/generate/2025/8', {
+                    headers: {
+                        'Authorization': `Bearer ${idToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                output.textContent += 'API Response:\n';
+                output.textContent += JSON.stringify(data, null, 2);
+                
+                // Highlight budget info
+                if (data.data) {
+                    output.textContent += '\n\n=== BUDGET ANALYSIS ===\n';
+                    output.textContent += `Total Budget: €${data.data.totalBudget || 0}\n`;
+                    output.textContent += `Total Spent: €${data.data.totalSpent || 0}\n`;
+                    output.textContent += `Total Variance: €${data.data.totalVariance || 0}\n`;
+                    
+                    if (data.data.categories) {
+                        output.textContent += '\n=== CATEGORY BUDGETS ===\n';
+                        data.data.categories.forEach(cat => {
+                            output.textContent += `${cat.name}: Budget €${cat.budgeted || 0}, Spent €${cat.spent || 0}\n`;
+                        });
+                    }
+                }
+                
+            } catch (error) {
+                output.textContent += `Error: ${error.message}\n`;
+                console.error('Full error:', error);
+            }
+        };
+    </script>
+</body>
+</html>

@@ -53,10 +53,6 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar }) => {
           </div>
         </div>
 
-        <div className="w-8 h-8 bg-primary-700 rounded-lg flex items-center justify-center text-white font-semibold text-sm">
-          PL
-        </div>
-
         {/* Right side - Push elements to the right */}
         <div className="flex items-center gap-2 ml-auto">
           {/* Search - 320px wide */}

@@ -13,6 +13,16 @@ interface ThreeMonthComparisonProps {
 export default function ThreeMonthComparison({ data, categories }: ThreeMonthComparisonProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
+  // Handle null/undefined data or categories
+  if (!data || !categories) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Three Month Comparison</h3>
+        <p className="text-gray-500">No comparison data available for this period.</p>
+      </div>
+    );
+  }
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -90,9 +100,9 @@ export default function ThreeMonthComparison({ data, categories }: ThreeMonthCom
                       </button>
                     </td>
                     {[...data.previous.slice().reverse(), data.current].map((monthData) => {
-                      const amount = monthData.spending[categoryName] || 0;
-                      const budget = categoryData.budgeted || 0;
-                      const isOver = amount > budget;
+                      const amount = monthData.spending?.[categoryName] || 0;
+                      const budget = categoryData?.budgeted || 0;
+                      const isOver = amount > budget && budget > 0;
                       
                       return (
                         <td key={`${monthData.year}-${monthData.month}`} className="px-6 py-3 text-right">
@@ -102,8 +112,8 @@ export default function ThreeMonthComparison({ data, categories }: ThreeMonthCom
                           )}>
                             {formatCurrency(amount)}
                           </div>
-                          <div className="text-xs text-gray-500">
-                            Budget: {formatCurrency(budget)}
+                          <div className="text-xs text-gray-400">
+                            {formatCurrency(budget)}
                           </div>
                         </td>
                       );

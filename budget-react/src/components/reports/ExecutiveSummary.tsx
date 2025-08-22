@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { TrendingUp, TrendingDown, DollarSign, Percent, Info, AlertTriangle, Plus, X, User } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -22,7 +22,7 @@ interface NeededAction {
   priority: 'info' | 'warning';
 }
 
-export default function ExecutiveSummary({ 
+const ExecutiveSummary = memo(function ExecutiveSummary({ 
   data, 
   summary, 
   onChange, 
@@ -32,6 +32,16 @@ export default function ExecutiveSummary({
 }: ExecutiveSummaryProps) {
   const [localActions, setLocalActions] = useState<NeededAction[]>(actions);
   const [newAction, setNewAction] = useState({ text: '', assignee: '', priority: 'info' as 'info' | 'warning' });
+  
+  // Debug what data we receive
+  console.log('ExecutiveSummary received:', {
+    totalBudget: data?.totalBudget,
+    totalSpent: data?.totalSpent,
+    totalVariance: data?.totalVariance,
+    hasData: !!data,
+    dataType: typeof data,
+    dataKeys: data ? Object.keys(data) : []
+  });
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -86,7 +96,7 @@ export default function ExecutiveSummary({
   };
 
   const handleAddAction = () => {
-    if (newAction.text && newAction.assignee) {
+    if (newAction.text) {
       const action: NeededAction = {
         id: Date.now().toString(),
         text: newAction.text,
@@ -163,7 +173,7 @@ export default function ExecutiveSummary({
         {/* Budget Utilization - Dynamic Color */}
         <div className={cn("rounded-lg p-4 border", getUtilizationColor())}>
           <div className="flex items-center justify-between mb-2">
-            <span className={cn("text-sm font-medium", getUtilizationTextColor())}>Budget Utilization</span>
+            <span className={cn("text-sm font-medium", getUtilizationTextColor())}>Utilization</span>
             <Percent className="h-4 w-4 text-blue-600" />
           </div>
           <div className={cn("text-xl font-bold", getUtilizationTextColor())}>
@@ -191,7 +201,7 @@ export default function ExecutiveSummary({
         {/* Modernized Key Actions Required - Right Column */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Key Actions Required
+            Need to Know
           </label>
           <div className="border border-gray-200 rounded-lg bg-white h-48 flex flex-col">
             {/* Actions List - Modern Compact Design */}
@@ -205,39 +215,44 @@ export default function ExecutiveSummary({
                   {localActions.map(action => (
                     <div 
                       key={action.id} 
-                      className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors group"
+                      className={cn(
+                        "flex items-center gap-2 px-2 py-1.5 rounded-md transition-all duration-200 group",
+                        action.priority === 'warning' 
+                          ? "bg-amber-50 hover:bg-amber-100 border border-amber-200" 
+                          : "bg-blue-50 hover:bg-blue-100 border border-blue-200"
+                      )}
                     >
-                      {/* Priority Icon */}
+                      {/* Priority Icon - Compact */}
                       <div className="flex-shrink-0">
                         {action.priority === 'warning' ? (
-                          <div className="w-6 h-6 bg-red-100 rounded-full flex items-center justify-center">
-                            <AlertTriangle className="h-3 w-3 text-red-600" />
+                          <div className="w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center">
+                            <AlertTriangle className="h-2.5 w-2.5 text-white" />
                           </div>
                         ) : (
-                          <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
-                            <Info className="h-3 w-3 text-blue-600" />
+                          <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+                            <Info className="h-2.5 w-2.5 text-white" />
                           </div>
                         )}
                       </div>
                       
-                      {/* Action Text */}
+                      {/* Action Text - Compact */}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-900 truncate">{action.text}</p>
+                        <p className="text-xs font-medium text-gray-900 truncate">{action.text}</p>
                       </div>
                       
-                      {/* Assignee */}
-                      <div className="flex items-center gap-1 text-xs text-gray-500">
-                        <User className="h-3 w-3" />
-                        <span className="max-w-[80px] truncate">{action.assignee}</span>
+                      {/* Assignee - Compact Badge */}
+                      <div className="flex items-center gap-1 px-1.5 py-0.5 bg-white rounded border border-gray-200">
+                        <User className="h-2.5 w-2.5 text-gray-500" />
+                        <span className="text-xs text-gray-700 max-w-[60px] truncate">{action.assignee}</span>
                       </div>
                       
-                      {/* Remove Button */}
+                      {/* Remove Button - Compact */}
                       {!disabled && (
                         <button
                           onClick={() => handleRemoveAction(action.id)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-red-100 rounded"
                         >
-                          <X className="h-4 w-4 text-gray-400 hover:text-red-500" />
+                          <X className="h-3 w-3 text-gray-400 hover:text-red-600" />
                         </button>
                       )}
                     </div>
@@ -246,43 +261,75 @@ export default function ExecutiveSummary({
               )}
             </div>
 
-            {/* Add New Action - Single Line Input */}
+            {/* Add New Action - Compact Design */}
             {!disabled && (
-              <div className="border-t p-2">
+              <div className="border-t bg-gray-50 p-2">
                 <div className="flex items-center gap-2">
-                  {/* Priority Selector */}
-                  <select
-                    value={newAction.priority}
-                    onChange={(e) => setNewAction({...newAction, priority: e.target.value as 'info' | 'warning'})}
-                    className="flex-shrink-0 px-2 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  >
-                    <option value="info">ℹ️</option>
-                    <option value="warning">⚠️</option>
-                  </select>
+                  {/* Priority Toggle - Compact Pills */}
+                  <div className="flex bg-gray-100 rounded-full p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setNewAction({...newAction, priority: 'info'})}
+                      className={cn(
+                        "px-2 py-1 rounded-full text-xs font-medium transition-all duration-200",
+                        newAction.priority === 'info' 
+                          ? "bg-blue-500 text-white" 
+                          : "text-gray-600 hover:text-gray-900"
+                      )}
+                    >
+                      <div className="flex items-center gap-0.5">
+                        <Info className="h-2.5 w-2.5" />
+                        <span className="text-[10px]">Info</span>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewAction({...newAction, priority: 'warning'})}
+                      className={cn(
+                        "px-2 py-1 rounded-full text-xs font-medium transition-all duration-200",
+                        newAction.priority === 'warning' 
+                          ? "bg-amber-500 text-white" 
+                          : "text-gray-600 hover:text-gray-900"
+                      )}
+                    >
+                      <div className="flex items-center gap-0.5">
+                        <AlertTriangle className="h-2.5 w-2.5" />
+                        <span className="text-[10px]">Alert</span>
+                      </div>
+                    </button>
+                  </div>
                   
-                  {/* Action Input */}
+                  {/* Action Input - Compact */}
                   <input
                     type="text"
-                    placeholder="Action..."
+                    placeholder="Add critical info here..."
                     value={newAction.text}
                     onChange={(e) => setNewAction({...newAction, text: e.target.value})}
-                    className="flex-1 min-w-0 px-2 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 px-2 py-1 text-xs border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
                   />
                   
-                  {/* Assignee Input */}
-                  <input
-                    type="text"
-                    placeholder="Assignee..."
-                    value={newAction.assignee}
-                    onChange={(e) => setNewAction({...newAction, assignee: e.target.value})}
-                    className="w-24 px-2 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  {/* Assignee Input - Compact with icon */}
+                  <div className="relative">
+                    <User className="absolute left-2 top-1.5 h-2.5 w-2.5 text-gray-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="Assignee (optional)"
+                      value={newAction.assignee}
+                      onChange={(e) => setNewAction({...newAction, assignee: e.target.value})}
+                      className="w-24 pl-6 pr-2 py-1 text-xs border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
+                    />
+                  </div>
                   
-                  {/* Add Button */}
+                  {/* Add Button - Compact */}
                   <button
                     onClick={handleAddAction}
-                    disabled={!newAction.text || !newAction.assignee}
-                    className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+                    disabled={!newAction.text}
+                    className={cn(
+                      "p-1 rounded-md transition-all duration-200",
+                      !newAction.text
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "bg-blue-500 text-white hover:bg-blue-600"
+                    )}
                   >
                     <Plus className="h-3 w-3" />
                   </button>
@@ -294,4 +341,6 @@ export default function ExecutiveSummary({
       </div>
     </div>
   );
-}
+});
+
+export default ExecutiveSummary;

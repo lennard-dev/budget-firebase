@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Wallet, Building2, TrendingDown, Calendar } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -6,13 +7,19 @@ interface FinancialPositionProps {
   bankBalance: number;
   burnRate: number;
   monthsRemaining: number;
+  comment?: string;
+  onCommentChange?: (value: string) => void;
+  disabled?: boolean;
 }
 
-export default function FinancialPosition({ 
+const FinancialPosition = memo(function FinancialPosition({ 
   cashBalance, 
   bankBalance, 
   burnRate, 
-  monthsRemaining 
+  monthsRemaining,
+  comment,
+  onCommentChange,
+  disabled
 }: FinancialPositionProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -100,14 +107,24 @@ export default function FinancialPosition({
         </div>
       </div>
       
-      {monthsRemaining < 3 && (
-        <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-          <p className="text-sm text-amber-800">
-            <strong>Financial Advisory:</strong> With {monthsRemaining.toFixed(1)} months of runway remaining, 
-            it's recommended to initiate fundraising activities or implement cost reduction measures to extend operational capacity.
-          </p>
+      {/* Comment field */}
+      {onCommentChange && (
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Comments
+          </label>
+          <textarea
+            value={comment || ''}
+            onChange={(e) => onCommentChange(e.target.value)}
+            disabled={disabled}
+            placeholder="Optionally, add any notes about the current financial position..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500 resize-y min-h-[48px]"
+            rows={2}
+          />
         </div>
       )}
     </div>
   );
-}
+});
+
+export default FinancialPosition;

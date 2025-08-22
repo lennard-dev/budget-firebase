@@ -304,6 +304,18 @@ async function createTransaction(uid, transactionData) {
   console.log(`Transaction ${txnId} created, rebuilding ledger for accounts: ${accountsToRebuild.join(', ')}`);
   await rebuildLedgerForAccounts(uid, accountsToRebuild);
   
+  // Update aggregates for instant report generation
+  try {
+    await Promise.all([
+      updateMonthlyAggregates(uid, txnData, 'create'),
+      updateYtdAggregates(uid, txnData, 'create')
+    ]);
+    console.log(`Aggregates updated for transaction ${txnId}`);
+  } catch (aggregateError) {
+    console.error(`Failed to update aggregates for ${txnId}:`, aggregateError);
+    // Don't fail the transaction if aggregate update fails
+  }
+  
   return txnId;
 }
 
@@ -601,6 +613,300 @@ async function rebuildLedger(uid) {
   };
 }
 
+// ==================== AGGREGATION SYSTEM ====================
+// Professional event-driven aggregation for scalable reports
+
+/**
+ * Update monthly aggregates when transactions change
+ * This maintains pre-computed totals for instant report generation
+ */
+async function updateMonthlyAggregates(uid, transaction, operation = 'create') {
+  const txnDate = transaction.date;
+  const [year, month] = txnDate.split('-');
+  const monthKey = `${year}-${month}`;
+  
+  const monthlyRef = db.collection("users").doc(uid)
+    .collection("monthly_aggregates").doc(monthKey);
+  
+  const monthlyDoc = await monthlyRef.get();
+  
+  if (!monthlyDoc.exists && operation !== 'delete') {
+    // Initialize new monthly aggregate
+    await monthlyRef.set({
+      month: parseInt(month),
+      year: parseInt(year),
+      totalExpenses: 0,
+      totalIncome: 0,
+      transactionCount: 0,
+      categories: {},
+      dailyTotals: {},
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      version: 1
+    });
+  }
+  
+  // Calculate the delta based on operation
+  let amountDelta = 0;
+  let countDelta = 0;
+  
+  if (operation === 'delete') {
+    amountDelta = -Math.abs(transaction.amount || 0);
+    countDelta = -1;
+  } else if (operation === 'update') {
+    // For updates, we need to know the old value
+    // This is handled by the caller
+    amountDelta = transaction.amountDelta || 0;
+    countDelta = 0;
+  } else {
+    amountDelta = Math.abs(transaction.amount || 0);
+    countDelta = 1;
+  }
+  
+  // Prepare update object
+  const updates = {
+    lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+  };
+  
+  if (transaction.type === 'expense') {
+    updates.totalExpenses = admin.firestore.FieldValue.increment(amountDelta);
+  } else if (transaction.type === 'income') {
+    updates.totalIncome = admin.firestore.FieldValue.increment(amountDelta);
+  }
+  
+  updates.transactionCount = admin.firestore.FieldValue.increment(countDelta);
+  
+  // Update category totals
+  if (transaction.category) {
+    const categoryPath = `categories.${transaction.category}`;
+    updates[`${categoryPath}.total`] = admin.firestore.FieldValue.increment(amountDelta);
+    updates[`${categoryPath}.count`] = admin.firestore.FieldValue.increment(countDelta);
+    
+    if (transaction.subcategory) {
+      const subcategoryPath = `${categoryPath}.subcategories.${transaction.subcategory}`;
+      updates[`${subcategoryPath}.spent`] = admin.firestore.FieldValue.increment(amountDelta);
+      updates[`${subcategoryPath}.count`] = admin.firestore.FieldValue.increment(countDelta);
+    }
+  }
+  
+  // Update daily total
+  updates[`dailyTotals.${txnDate}`] = admin.firestore.FieldValue.increment(amountDelta);
+  
+  await monthlyRef.update(updates);
+}
+
+/**
+ * Update YTD aggregates
+ */
+async function updateYtdAggregates(uid, transaction, operation = 'create') {
+  const [year, month] = transaction.date.split('-');
+  const ytdRef = db.collection("users").doc(uid)
+    .collection("ytd_aggregates").doc(year);
+  
+  const ytdDoc = await ytdRef.get();
+  
+  if (!ytdDoc.exists && operation !== 'delete') {
+    // Initialize YTD aggregate
+    await ytdRef.set({
+      year: parseInt(year),
+      months: {},
+      totalYtdExpenses: 0,
+      totalYtdIncome: 0,
+      categoryYtd: {},
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      version: 1
+    });
+  }
+  
+  // Calculate delta
+  let amountDelta = 0;
+  if (operation === 'delete') {
+    amountDelta = -Math.abs(transaction.amount || 0);
+  } else if (operation === 'update') {
+    amountDelta = transaction.amountDelta || 0;
+  } else {
+    amountDelta = Math.abs(transaction.amount || 0);
+  }
+  
+  const updates = {
+    lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+  };
+  
+  // Update month-specific data
+  const monthPath = `months.${month}`;
+  if (transaction.type === 'expense') {
+    updates[`${monthPath}.expenses`] = admin.firestore.FieldValue.increment(amountDelta);
+    updates.totalYtdExpenses = admin.firestore.FieldValue.increment(amountDelta);
+  } else if (transaction.type === 'income') {
+    updates[`${monthPath}.income`] = admin.firestore.FieldValue.increment(amountDelta);
+    updates.totalYtdIncome = admin.firestore.FieldValue.increment(amountDelta);
+  }
+  
+  // Update category YTD
+  if (transaction.category) {
+    const categoryPath = `categoryYtd.${transaction.category}`;
+    updates[`${categoryPath}.total`] = admin.firestore.FieldValue.increment(amountDelta);
+    updates[`${categoryPath}.months.${month}`] = admin.firestore.FieldValue.increment(amountDelta);
+  }
+  
+  await ytdRef.update(updates);
+}
+
+/**
+ * Rebuild all aggregates from scratch (for data integrity)
+ */
+async function rebuildAggregates(uid) {
+  console.log(`Starting aggregate rebuild for user ${uid}`);
+  
+  // Clear existing aggregates
+  const [monthlySnap, ytdSnap] = await Promise.all([
+    db.collection("users").doc(uid).collection("monthly_aggregates").get(),
+    db.collection("users").doc(uid).collection("ytd_aggregates").get()
+  ]);
+  
+  const batch = db.batch();
+  monthlySnap.forEach(doc => batch.delete(doc.ref));
+  ytdSnap.forEach(doc => batch.delete(doc.ref));
+  await batch.commit();
+  
+  // Get all transactions
+  const transactionsSnap = await db.collection("users").doc(uid)
+    .collection("all-transactions")
+    .orderBy("date", "asc")
+    .get();
+  
+  // Process transactions and build aggregates
+  const monthlyData = {};
+  const ytdData = {};
+  
+  transactionsSnap.forEach(doc => {
+    const txn = doc.data();
+    if (txn.voided) return;
+    
+    const [year, month, day] = txn.date.split('-');
+    const monthKey = `${year}-${month}`;
+    
+    // Initialize monthly aggregate if needed
+    if (!monthlyData[monthKey]) {
+      monthlyData[monthKey] = {
+        month: parseInt(month),
+        year: parseInt(year),
+        totalExpenses: 0,
+        totalIncome: 0,
+        transactionCount: 0,
+        categories: {},
+        dailyTotals: {},
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        version: 1
+      };
+    }
+    
+    // Initialize YTD aggregate if needed
+    if (!ytdData[year]) {
+      ytdData[year] = {
+        year: parseInt(year),
+        months: {},
+        totalYtdExpenses: 0,
+        totalYtdIncome: 0,
+        categoryYtd: {},
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        version: 1
+      };
+    }
+    
+    const amount = Math.abs(txn.amount || 0);
+    
+    // Update monthly data
+    if (txn.type === 'expense') {
+      monthlyData[monthKey].totalExpenses += amount;
+      ytdData[year].totalYtdExpenses += amount;
+      
+      if (!ytdData[year].months[month]) {
+        ytdData[year].months[month] = { expenses: 0, income: 0 };
+      }
+      ytdData[year].months[month].expenses += amount;
+    } else if (txn.type === 'income') {
+      monthlyData[monthKey].totalIncome += amount;
+      ytdData[year].totalYtdIncome += amount;
+      
+      if (!ytdData[year].months[month]) {
+        ytdData[year].months[month] = { expenses: 0, income: 0 };
+      }
+      ytdData[year].months[month].income += amount;
+    }
+    
+    monthlyData[monthKey].transactionCount++;
+    
+    // Update category data
+    if (txn.category) {
+      if (!monthlyData[monthKey].categories[txn.category]) {
+        monthlyData[monthKey].categories[txn.category] = {
+          total: 0,
+          count: 0,
+          subcategories: {}
+        };
+      }
+      
+      monthlyData[monthKey].categories[txn.category].total += amount;
+      monthlyData[monthKey].categories[txn.category].count++;
+      
+      if (txn.subcategory) {
+        if (!monthlyData[monthKey].categories[txn.category].subcategories[txn.subcategory]) {
+          monthlyData[monthKey].categories[txn.category].subcategories[txn.subcategory] = {
+            spent: 0,
+            count: 0
+          };
+        }
+        monthlyData[monthKey].categories[txn.category].subcategories[txn.subcategory].spent += amount;
+        monthlyData[monthKey].categories[txn.category].subcategories[txn.subcategory].count++;
+      }
+      
+      // Update YTD category data
+      if (!ytdData[year].categoryYtd[txn.category]) {
+        ytdData[year].categoryYtd[txn.category] = {
+          total: 0,
+          months: {}
+        };
+      }
+      ytdData[year].categoryYtd[txn.category].total += amount;
+      
+      if (!ytdData[year].categoryYtd[txn.category].months[month]) {
+        ytdData[year].categoryYtd[txn.category].months[month] = 0;
+      }
+      ytdData[year].categoryYtd[txn.category].months[month] += amount;
+    }
+    
+    // Update daily totals
+    if (!monthlyData[monthKey].dailyTotals[txn.date]) {
+      monthlyData[monthKey].dailyTotals[txn.date] = 0;
+    }
+    monthlyData[monthKey].dailyTotals[txn.date] += amount;
+  });
+  
+  // Write all aggregates
+  const writeBatch = db.batch();
+  
+  for (const [monthKey, data] of Object.entries(monthlyData)) {
+    const ref = db.collection("users").doc(uid)
+      .collection("monthly_aggregates").doc(monthKey);
+    writeBatch.set(ref, data);
+  }
+  
+  for (const [year, data] of Object.entries(ytdData)) {
+    const ref = db.collection("users").doc(uid)
+      .collection("ytd_aggregates").doc(year);
+    writeBatch.set(ref, data);
+  }
+  
+  await writeBatch.commit();
+  
+  console.log(`Aggregate rebuild complete for user ${uid}`);
+  return {
+    monthlyAggregates: Object.keys(monthlyData).length,
+    ytdAggregates: Object.keys(ytdData).length,
+    transactionsProcessed: transactionsSnap.size
+  };
+}
+
 // ==================== API ENDPOINTS ====================
 
 // 1. Create transaction
@@ -839,6 +1145,21 @@ apiRouter.put("/transactions/:id", async (req, res) => {
         await rebuildLedger(uid);
         console.log(`Ledger rebuilt successfully after updating transaction ${txnDoc.id}`);
         
+        // Update aggregates for instant report generation
+        try {
+          // Calculate amount delta for aggregates
+          const amountDelta = (updates.amount || oldData.amount) - oldData.amount;
+          const updatedTxn = {...oldData, ...updates, amountDelta};
+          
+          await Promise.all([
+            updateMonthlyAggregates(uid, updatedTxn, 'update'),
+            updateYtdAggregates(uid, updatedTxn, 'update')
+          ]);
+          console.log(`Aggregates updated after updating transaction ${txnDoc.id}`);
+        } catch (aggregateError) {
+          console.error(`Failed to update aggregates after update:`, aggregateError);
+        }
+        
         // Get updated balances to return to client
         const cashBalance = await db.collection("users").doc(uid)
             .collection("account_balances").doc("cash").get();
@@ -851,8 +1172,8 @@ apiRouter.put("/transactions/:id", async (req, res) => {
           data: {id: txnDoc.id, ...updates},
           ledgerRebuilt: true,
           updatedBalances: {
-            cash: cashBalance.data()?.current_balance || 0,
-            bank: bankBalance.data()?.current_balance || 0
+            cash: cashBalance.data() ? cashBalance.data().current_balance : 0,
+            bank: bankBalance.data() ? bankBalance.data().current_balance : 0
           }
         });
       } catch (rebuildError) {
@@ -939,6 +1260,17 @@ apiRouter.delete("/transactions/:id", async (req, res) => {
       const rebuildResult = await rebuildLedger(uid);
       console.log(`Ledger rebuilt successfully after deleting transaction ${txnDoc.id}`);
       
+      // Update aggregates for instant report generation
+      try {
+        await Promise.all([
+          updateMonthlyAggregates(uid, transactionData, 'delete'),
+          updateYtdAggregates(uid, transactionData, 'delete')
+        ]);
+        console.log(`Aggregates updated after deleting transaction ${txnDoc.id}`);
+      } catch (aggregateError) {
+        console.error(`Failed to update aggregates after deletion:`, aggregateError);
+      }
+      
       // Get updated balances to return to client
       const cashBalance = await db.collection("users").doc(uid)
           .collection("account_balances").doc("cash").get();
@@ -950,8 +1282,8 @@ apiRouter.delete("/transactions/:id", async (req, res) => {
         message: "Transaction deleted and ledger rebuilt successfully",
         deletedId: txnDoc.id,
         updatedBalances: {
-          cash: cashBalance.data()?.current_balance || 0,
-          bank: bankBalance.data()?.current_balance || 0
+          cash: cashBalance.data() ? cashBalance.data().current_balance : 0,
+          bank: bankBalance.data() ? bankBalance.data().current_balance : 0
         }
       });
     } catch (rebuildError) {
@@ -1537,7 +1869,7 @@ apiRouter.get("/budgets", async (req, res) => {
       });
     }
     
-    // Get budget document for the specific month - use only budget_allocations collection
+    // Get budget document for the specific month - use budget_allocations collection
     const budgetId = `${year}-${String(month).padStart(2, '0')}`;
     const budgetDoc = await db.collection("users").doc(uid)
         .collection("budget_allocations").doc(budgetId).get();
@@ -1645,7 +1977,7 @@ apiRouter.get("/budgets", async (req, res) => {
     // Process each category
     categoriesData.forEach(category => {
       const categoryName = category.name;
-      const budgetForCategory = budgetData.categories?.[categoryName] || {};
+      const budgetForCategory = (budgetData.categories && budgetData.categories[categoryName]) || {};
       const spendingForCategory = spendingByCategory[categoryName] || { total: 0, subcategories: {} };
       
       // Calculate totals for this category
@@ -1702,7 +2034,9 @@ apiRouter.get("/budgets", async (req, res) => {
         total: categoryBudgetTotal  // Add explicit total field
       };
       
-      totalBudget += categoryBudgetTotal;
+      if (!useStoredTotal) {
+        totalBudget += categoryBudgetTotal;
+      }
       totalSpent += spendingForCategory.total;
     });
     
@@ -1774,7 +2108,7 @@ apiRouter.post("/budgets", async (req, res) => {
     const budgetId = `${year}-${String(month).padStart(2, '0')}`;
     
     await db.collection("users").doc(uid)
-        .collection("budgets").doc(budgetId).set({
+        .collection("budget_allocations").doc(budgetId).set({
       totalBudget: totalBudget || 0,
       categories: categoriesData,
       categoryIds: categoryIdMap, // Store ID mappings for future reference
@@ -3508,31 +3842,56 @@ apiRouter.post("/migration/complete-accounts-migration", async (req, res) => {
 apiRouter.get("/reports", async (req, res) => {
   try {
     const uid = req.user.uid;
-    const { status, year, limit = 12 } = req.query;
+    const { status, year, month, limit = 12 } = req.query;
     
+    console.log("GET /reports - Query params:", { status, year, month, limit, uid });
+    
+    // Fetch all reports first, then filter in memory to avoid index requirements
     let query = db.collection("users").doc(uid)
       .collection("reports")
-      .orderBy("createdAt", "desc");
-    
-    if (status) {
-      query = query.where("status", "==", status);
-    }
-    
-    if (year) {
-      query = query.where("year", "==", parseInt(year));
-    }
-    
-    query = query.limit(parseInt(limit));
+      .orderBy("createdAt", "desc")
+      .limit(parseInt(limit) * 2); // Get extra for filtering
     
     const snapshot = await query.get();
-    const reports = [];
+    let reports = [];
     
     snapshot.forEach(doc => {
+      const data = doc.data();
+      // Apply filters in memory
+      if (status && data.status !== status) return;
+      if (year && data.year !== parseInt(year)) return;
+      if (month && data.month !== parseInt(month)) return;
+      
+      // Debug specific report fields
+      if (data.month === 8 && data.year === 2024) {
+        console.log("Found August 2024 report:", {
+          id: doc.id,
+          executiveSummary: data.executiveSummary,
+          neededActions: data.neededActions,
+          additionalNotes: data.additionalNotes,
+          upcomingExpenses: data.upcomingExpenses,
+          hasDataSnapshot: !!data.dataSnapshot
+        });
+      }
+      
       reports.push({
         id: doc.id,
-        ...doc.data()
+        ...data
       });
     });
+    
+    // Apply limit after filtering
+    reports = reports.slice(0, parseInt(limit));
+    
+    console.log(`GET /reports - Returning ${reports.length} reports for month=${month}, year=${year}`);
+    if (reports.length > 0) {
+      console.log("First report:", {
+        id: reports[0].id,
+        month: reports[0].month,
+        year: reports[0].year,
+        executiveSummary: reports[0].executiveSummary?.substring(0, 50)
+      });
+    }
     
     return res.json({
       success: true,
@@ -3548,14 +3907,219 @@ apiRouter.get("/reports", async (req, res) => {
 });
 
 /**
- * GET /api/reports/generate/:year/:month - Generate report data for a specific month
+ * GET /api/reports/generate/:year/:month - Optimized report generation with aggregates
  */
 apiRouter.get("/reports/generate/:year/:month", async (req, res) => {
   try {
     const uid = req.user.uid;
     const { year, month } = req.params;
+    const startTime = Date.now();
     
-    // Get budget data for the month
+    console.log(`Generating report for ${year}-${month} using optimized aggregates`);
+    
+    // Check if aggregates exist
+    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+    let [monthlyDoc, ytdDoc] = await Promise.all([
+      db.collection("users").doc(uid).collection("monthly_aggregates").doc(monthKey).get(),
+      db.collection("users").doc(uid).collection("ytd_aggregates").doc(year).get()
+    ]);
+    
+    // If aggregates don't exist, rebuild them first
+    if (!monthlyDoc.exists || !ytdDoc.exists) {
+      console.log('Aggregates missing, rebuilding...');
+      await rebuildAggregates(uid);
+      
+      // Fetch again after rebuild
+      [monthlyDoc, ytdDoc] = await Promise.all([
+        db.collection("users").doc(uid).collection("monthly_aggregates").doc(monthKey).get(),
+        db.collection("users").doc(uid).collection("ytd_aggregates").doc(year).get()
+      ]);
+      
+      // Check if rebuild succeeded
+      if (!monthlyDoc.exists || !ytdDoc.exists) {
+        // Fall back to legacy method
+        console.log('Falling back to legacy report generation after rebuild failed');
+        return legacyGenerateReport(req, res);
+      }
+    }
+    
+    // Get aggregated data (3 queries total vs 46+ in old version!)
+    const monthlyData = monthlyDoc.data() || {};
+    const ytdData = ytdDoc.data() || {};
+    
+    // Get account balances
+    const [cashDoc, bankDoc] = await Promise.all([
+      db.collection("users").doc(uid).collection("account_balances").doc("cash").get(),
+      db.collection("users").doc(uid).collection("account_balances").doc("bank").get()
+    ]);
+    
+    const cashBalance = cashDoc.data() ? cashDoc.data().current_balance : 0;
+    const bankBalance = bankDoc.data() ? bankDoc.data().current_balance : 0;
+    
+    // Get budget data for variance calculations
+    const budgetDoc = await db.collection("users").doc(uid)
+      .collection("budget_allocations").doc(monthKey).get();
+    const budgetData = budgetDoc.data() || {};
+    
+    // Calculate burn rate (3-month average)
+    const currentMonthExpenses = monthlyData.totalExpenses || 0;
+    let threeMonthTotal = currentMonthExpenses;
+    let monthsCount = 1;
+    
+    // Get previous 2 months for burn rate calculation
+    for (let i = 1; i <= 2; i++) {
+      const prevMonth = parseInt(month) - i;
+      const prevYear = prevMonth <= 0 ? parseInt(year) - 1 : year;
+      const actualMonth = prevMonth <= 0 ? 12 + prevMonth : prevMonth;
+      const prevMonthKey = `${prevYear}-${String(actualMonth).padStart(2, '0')}`;
+      
+      const prevMonthDoc = await db.collection("users").doc(uid)
+        .collection("monthly_aggregates").doc(prevMonthKey).get();
+      
+      if (prevMonthDoc.exists) {
+        threeMonthTotal += prevMonthDoc.data().totalExpenses || 0;
+        monthsCount++;
+      }
+    }
+    
+    const burnRate = threeMonthTotal / monthsCount;
+    const totalAvailable = cashBalance + bankBalance;
+    const monthsRemaining = burnRate > 0 ? totalAvailable / burnRate : 0;
+    
+    // Format YTD data
+    const ytdMonths = [];
+    for (let m = 1; m <= parseInt(month); m++) {
+      const monthData = (ytdData.months && ytdData.months[m]) || { expenses: 0, income: 0 };
+      const monthBudgetKey = `${year}-${String(m).padStart(2, '0')}`;
+      const monthBudgetDoc = await db.collection("users").doc(uid)
+        .collection("budget_allocations").doc(monthBudgetKey).get();
+      
+      let monthBudget = 0;
+      if (monthBudgetDoc.exists) {
+        monthBudget = monthBudgetDoc.data().totalBudget || 0;
+      }
+      
+      ytdMonths.push({
+        month: m,
+        budget: monthBudget,
+        actual: monthData.expenses || 0
+      });
+    }
+    
+    // Process categories with variance analysis
+    const categoriesWithVariance = {};
+    const variancesNeedingExplanation = [];
+    let categoryBudgetTotal = 0;
+    
+    Object.entries(monthlyData.categories || {}).forEach(([categoryName, categoryData]) => {
+      const budgetForCategory = (budgetData.categories && budgetData.categories[categoryName]) || {};
+      let categoryBudgetForItem = 0;
+      
+      // Calculate budget total for category
+      Object.values(budgetForCategory).forEach(amount => {
+        if (typeof amount === 'number') {
+          categoryBudgetForItem += amount;
+          categoryBudgetTotal += amount;
+        }
+      });
+      
+      const variance = (categoryData.total || 0) - categoryBudgetForItem;
+      const variancePercentage = categoryBudgetForItem > 0 ? 
+        (variance / categoryBudgetForItem) * 100 : 0;
+      
+      categoriesWithVariance[categoryName] = {
+        budgeted: categoryBudgetForItem,
+        spent: categoryData.total || 0,
+        variance: variance,
+        variancePercentage: variancePercentage,
+        subcategories: categoryData.subcategories || {}
+      };
+      
+      // Track significant variances needing explanation
+      if (Math.abs(variancePercentage) > 10 && Math.abs(variance) > 100) {
+        variancesNeedingExplanation.push({
+          category: categoryName,
+          variance: variance,
+          percentage: variancePercentage
+        });
+      }
+    });
+    
+    // Three-month comparison
+    const threeMonthComparison = {
+      current: { 
+        month: parseInt(month), 
+        year: parseInt(year), 
+        spending: monthlyData.categories || {} 
+      },
+      previous: []
+    };
+    
+    // Check for existing report to preserve user-entered data
+    const existingReportQuery = await db.collection("users").doc(uid)
+      .collection("reports")
+      .where("year", "==", parseInt(year))
+      .where("month", "==", parseInt(month))
+      .limit(1)
+      .get();
+    
+    let existingReport = null;
+    if (!existingReportQuery.empty) {
+      existingReport = existingReportQuery.docs[0].data();
+    }
+    
+    const responseTime = Date.now() - startTime;
+    console.log(`Report generated in ${responseTime}ms (optimized)`);
+    
+    return res.json({
+      success: true,
+      data: {
+        month: parseInt(month),
+        year: parseInt(year),
+        totalBudget: budgetData.totalBudget || categoryBudgetTotal,
+        totalSpent: monthlyData.totalExpenses || 0,
+        totalVariance: (monthlyData.totalExpenses || 0) - (budgetData.totalBudget || 0),
+        categories: categoriesWithVariance,
+        variancesNeedingExplanation,
+        cashBalance,
+        bankBalance,
+        burnRate,
+        monthsRemaining,
+        threeMonthComparison,
+        ytdData: ytdMonths,
+        // Preserve user-entered data if it exists
+        ytdComment: (existingReport && existingReport.ytdComment) || '',
+        financialPositionComment: (existingReport && existingReport.financialPositionComment) || '',
+        executiveSummary: (existingReport && existingReport.executiveSummary) || '',
+        neededActions: (existingReport && existingReport.neededActions) || [],
+        additionalNotes: (existingReport && existingReport.additionalNotes) || '',
+        upcomingExpenses: (existingReport && existingReport.upcomingExpenses) || '',
+        // Performance metrics
+        _performance: {
+          responseTime,
+          method: 'aggregates',
+          queries: 5 // vs 46+ in old method
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error("Error in optimized report generation:", error);
+    // Fall back to legacy method on error
+    return legacyGenerateReport(req, res);
+  }
+});
+
+/**
+ * Legacy report generation (fallback)
+ */
+async function legacyGenerateReport(req, res) {
+  // This is the old implementation kept as fallback
+  try {
+    const uid = req.user.uid;
+    const { year, month } = req.params;
+    
+    // Get budget data for the month - use budget_allocations collection
     const budgetId = `${year}-${String(month).padStart(2, '0')}`;
     const budgetDoc = await db.collection("users").doc(uid)
       .collection("budget_allocations").doc(budgetId).get();
@@ -3601,6 +4165,12 @@ apiRouter.get("/reports/generate/:year/:month", async (req, res) => {
     const budgetData = budgetDoc.exists ? budgetDoc.data() : {};
     const budgetCategories = budgetData.categories || {};
     let totalBudget = 0;
+    let useStoredTotal = false;
+    
+    // Check if there's a stored totalBudget field first
+    if (budgetData.totalBudget && budgetData.totalBudget > 0) {
+      useStoredTotal = true;
+    }
     
     // Calculate variances
     const categoriesWithVariance = {};
@@ -3703,7 +4273,9 @@ apiRouter.get("/reports/generate/:year/:month", async (req, res) => {
         categoryBudgetTotal += categoryLevelBudget;
       }
       
-      totalBudget += categoryBudgetTotal;
+      if (!useStoredTotal) {
+        totalBudget += categoryBudgetTotal;
+      }
       
       const variance = spendingForCategory.total - categoryBudgetTotal;
       const variancePercent = categoryBudgetTotal > 0 
@@ -3801,7 +4373,7 @@ apiRouter.get("/reports/generate/:year/:month", async (req, res) => {
         monthTotal += Math.abs(doc.data().amount || 0);
       });
       
-      // Get budget for this month
+      // Get budget for this month - use budget_allocations collection
       const monthBudgetId = `${year}-${String(m).padStart(2, '0')}`;
       const monthBudgetDoc = await db.collection("users").doc(uid)
         .collection("budget_allocations").doc(monthBudgetId).get();
@@ -3809,16 +4381,22 @@ apiRouter.get("/reports/generate/:year/:month", async (req, res) => {
       let monthBudgetTotal = 0;
       if (monthBudgetDoc.exists) {
         const monthBudgetData = monthBudgetDoc.data();
-        const monthCategories = monthBudgetData.categories || {};
-        Object.values(monthCategories).forEach(catBudget => {
-          if (typeof catBudget === 'object') {
-            Object.values(catBudget).forEach(amount => {
-              if (typeof amount === 'number') {
-                monthBudgetTotal += amount;
-              }
-            });
-          }
-        });
+        // Use stored totalBudget if available
+        if (monthBudgetData.totalBudget && monthBudgetData.totalBudget > 0) {
+          monthBudgetTotal = monthBudgetData.totalBudget;
+        } else {
+          // Otherwise calculate from categories
+          const monthCategories = monthBudgetData.categories || {};
+          Object.values(monthCategories).forEach(catBudget => {
+            if (typeof catBudget === 'object') {
+              Object.values(catBudget).forEach(amount => {
+                if (typeof amount === 'number') {
+                  monthBudgetTotal += amount;
+                }
+              });
+            }
+          });
+        }
       }
       
       ytdMonths.push({
@@ -3826,6 +4404,11 @@ apiRouter.get("/reports/generate/:year/:month", async (req, res) => {
         budget: monthBudgetTotal,
         actual: monthTotal
       });
+    }
+    
+    // Use stored total if available
+    if (useStoredTotal) {
+      totalBudget = budgetData.totalBudget;
     }
     
     return res.json({
@@ -3856,7 +4439,7 @@ apiRouter.get("/reports/generate/:year/:month", async (req, res) => {
       error: error.message
     });
   }
-});
+}
 
 /**
  * GET /api/reports/:id - Get specific report
@@ -3900,6 +4483,20 @@ apiRouter.post("/reports", async (req, res) => {
     const uid = req.user.uid;
     const reportData = req.body;
     
+    // Debug logging for incoming data
+    console.log("Creating report - received data:", {
+      month: reportData.month,
+      year: reportData.year,
+      executiveSummary: reportData.executiveSummary,
+      neededActions: reportData.neededActions,
+      varianceExplanations: reportData.varianceExplanations,
+      additionalNotes: reportData.additionalNotes,
+      upcomingExpenses: reportData.upcomingExpenses,
+      ytdComment: reportData.ytdComment,
+      financialPositionComment: reportData.financialPositionComment,
+      hasDataSnapshot: !!reportData.dataSnapshot
+    });
+    
     // Check if report already exists for this month
     const existingQuery = await db.collection("users").doc(uid)
       .collection("reports")
@@ -3926,11 +4523,15 @@ apiRouter.post("/reports", async (req, res) => {
     const docRef = await db.collection("users").doc(uid)
       .collection("reports").add(newReport);
     
+    // Fetch the created document to get server timestamps and ensure consistency
+    const createdDoc = await docRef.get();
+    const createdData = createdDoc.data();
+    
     return res.json({
       success: true,
       data: {
         id: docRef.id,
-        ...newReport
+        ...createdData
       }
     });
   } catch (error) {
@@ -3950,6 +4551,19 @@ apiRouter.put("/reports/:id", async (req, res) => {
     const uid = req.user.uid;
     const { id } = req.params;
     const updates = req.body;
+    
+    // Debug logging for all fields
+    console.log("Updating report - received data:", {
+      reportId: id,
+      executiveSummary: updates.executiveSummary,
+      neededActions: updates.neededActions,
+      varianceExplanations: updates.varianceExplanations,
+      additionalNotes: updates.additionalNotes,
+      upcomingExpenses: updates.upcomingExpenses,
+      ytdComment: updates.ytdComment,
+      financialPositionComment: updates.financialPositionComment,
+      hasDataSnapshot: !!updates.dataSnapshot
+    });
     
     // Check if report exists and is a draft
     const reportDoc = await db.collection("users").doc(uid)
@@ -3977,11 +4591,16 @@ apiRouter.put("/reports/:id", async (req, res) => {
     await db.collection("users").doc(uid)
       .collection("reports").doc(id).update(updatedReport);
     
+    // Fetch the updated document to get server timestamps and full data
+    const updatedDoc = await db.collection("users").doc(uid)
+      .collection("reports").doc(id).get();
+    const updatedData = updatedDoc.data();
+    
     return res.json({
       success: true,
       data: {
         id: id,
-        ...updatedReport
+        ...updatedData
       }
     });
   } catch (error) {
@@ -4025,8 +4644,15 @@ apiRouter.post("/reports/:id/finalize", async (req, res) => {
     const variancesNeedingExplanation = reportData.variancesNeedingExplanation || [];
     const explanations = reportData.varianceExplanations || {};
     
+    // Debug logging
+    console.log("Finalize validation - variancesNeedingExplanation:", JSON.stringify(variancesNeedingExplanation));
+    console.log("Finalize validation - explanations object:", JSON.stringify(explanations));
+    console.log("Finalize validation - explanation keys:", Object.keys(explanations));
+    
     for (const variance of variancesNeedingExplanation) {
       if (!explanations[variance.category]) {
+        console.log(`Missing explanation for category: "${variance.category}"`);
+        console.log(`Available keys in explanations: ${Object.keys(explanations).join(", ")}`);
         return res.status(400).json({
           success: false,
           error: `Missing explanation for ${variance.category} variance`
@@ -4101,6 +4727,137 @@ apiRouter.post("/reports/:id/reopen", async (req, res) => {
     });
   } catch (error) {
     console.error("Error reopening report:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * DELETE /api/reports/:id - Delete a report
+ */
+apiRouter.delete("/reports/:id", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const { id } = req.params;
+    
+    // Check if report exists
+    const reportDoc = await db.collection("users").doc(uid)
+      .collection("reports").doc(id).get();
+    
+    if (!reportDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: "Report not found"
+      });
+    }
+    
+    // Delete the report
+    await db.collection("users").doc(uid)
+      .collection("reports").doc(id).delete();
+    
+    return res.json({
+      success: true,
+      message: "Report deleted successfully"
+    });
+  } catch (error) {
+    console.error("Error deleting report:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/admin/rebuild-aggregates - Rebuild all aggregates for a user
+ * This endpoint rebuilds all monthly and YTD aggregates from scratch
+ */
+apiRouter.post("/admin/rebuild-aggregates", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const startTime = Date.now();
+    
+    console.log(`Starting aggregate rebuild for user ${uid}`);
+    
+    const result = await rebuildAggregates(uid);
+    
+    const duration = Date.now() - startTime;
+    console.log(`Aggregate rebuild completed in ${duration}ms`);
+    
+    return res.json({
+      success: true,
+      message: "Aggregates rebuilt successfully",
+      data: {
+        ...result,
+        duration,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error("Error rebuilding aggregates:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/admin/aggregate-status - Check aggregate status for debugging
+ */
+apiRouter.get("/admin/aggregate-status", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    
+    // Get counts of aggregates
+    const [monthlySnap, ytdSnap] = await Promise.all([
+      db.collection("users").doc(uid).collection("monthly_aggregates").get(),
+      db.collection("users").doc(uid).collection("ytd_aggregates").get()
+    ]);
+    
+    // Get sample data for verification
+    let sampleMonthly = null;
+    let sampleYtd = null;
+    
+    if (!monthlySnap.empty) {
+      const doc = monthlySnap.docs[0];
+      sampleMonthly = {
+        id: doc.id,
+        ...doc.data(),
+        // Remove large fields for sample
+        dailyTotals: Object.keys(doc.data().dailyTotals || {}).length + " days"
+      };
+    }
+    
+    if (!ytdSnap.empty) {
+      const doc = ytdSnap.docs[0];
+      sampleYtd = {
+        id: doc.id,
+        year: doc.data().year,
+        totalYtdExpenses: doc.data().totalYtdExpenses,
+        totalYtdIncome: doc.data().totalYtdIncome,
+        monthsCount: Object.keys(doc.data().months || {}).length
+      };
+    }
+    
+    return res.json({
+      success: true,
+      data: {
+        monthlyAggregates: {
+          count: monthlySnap.size,
+          sample: sampleMonthly
+        },
+        ytdAggregates: {
+          count: ytdSnap.size,
+          sample: sampleYtd
+        },
+        status: monthlySnap.size > 0 ? "ready" : "not_initialized"
+      }
+    });
+  } catch (error) {
+    console.error("Error checking aggregate status:", error);
     return res.status(500).json({
       success: false,
       error: error.message

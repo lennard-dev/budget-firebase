@@ -96,7 +96,7 @@ export default function Reports() {
                 : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
             )}
           >
-            Create Monthly Financial Report
+            Create Report
           </button>
           <button
             onClick={() => setActiveTab('adhoc')}
@@ -107,7 +107,7 @@ export default function Reports() {
                 : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
             )}
           >
-            Ad-Hoc Report
+            More Insights
           </button>
         </div>
       </div>
@@ -115,9 +115,9 @@ export default function Reports() {
       {/* Metric Cards - Only show on overview tab */}
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="flex items-center justify-between">
-              <div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 h-full">
+            <div className="flex items-center justify-between h-full">
+              <div className="flex-1">
                 <div className="text-sm font-medium text-gray-500">Current Month Status</div>
                 <div className="mt-1 text-lg font-semibold">
                   {currentMonthReport ? (
@@ -134,51 +134,51 @@ export default function Reports() {
                   )}
                 </div>
               </div>
-              <FileText className="h-8 w-8 text-gray-400" />
+              <FileText className="h-8 w-8 text-gray-400 flex-shrink-0" />
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="flex items-center justify-between">
-              <div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 h-full">
+            <div className="flex items-center justify-between h-full">
+              <div className="flex-1">
                 <div className="text-sm font-medium text-gray-500">Total Reports</div>
-                <div className="mt-1 text-lg font-semibold">
-                  <span className="text-gray-900">{totalReports}</span>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {draftReports} draft, {finalReports} final
+                <div className="mt-1 flex items-center gap-3">
+                  <span className="text-2xl font-bold text-gray-900">{totalReports}</span>
+                  <div className="text-xs text-gray-500">
+                    {draftReports} draft<br/>{finalReports} final
                   </div>
                 </div>
               </div>
-              <BarChart3 className="h-8 w-8 text-gray-400" />
+              <BarChart3 className="h-8 w-8 text-gray-400 flex-shrink-0" />
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="flex items-center justify-between">
-              <div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 h-full">
+            <div className="flex items-center justify-between h-full">
+              <div className="flex-1">
                 <div className="text-sm font-medium text-gray-500">Reports This Year</div>
-                <div className="mt-1 text-lg font-semibold">
-                  <span className="text-gray-900">
+                <div className="mt-1 flex items-center gap-3">
+                  <span className="text-2xl font-bold text-gray-900">
                     {reports.filter((r: Report) => r.year === currentYear).length}
                   </span>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {Math.round((reports.filter((r: Report) => r.year === currentYear && r.status === 'final').length / 12) * 100)}% complete
+                  <div className="text-xs text-gray-500">
+                    {Math.round((reports.filter((r: Report) => r.year === currentYear && r.status === 'final').length / 12) * 100)}%<br/>complete
                   </div>
                 </div>
               </div>
-              <Calendar className="h-8 w-8 text-gray-400" />
+              <Calendar className="h-8 w-8 text-gray-400 flex-shrink-0" />
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="flex items-center justify-between">
-              <div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 h-full">
+            <div className="flex items-center justify-between h-full">
+              <div className="flex-1">
                 <div className="text-sm font-medium text-gray-500">Last Report Sent</div>
                 <div className="mt-1 text-lg font-semibold text-gray-900">
                   {lastFinalReport ? formatDate(lastFinalReport.finalizedAt || lastFinalReport.createdAt) : 'Never'}
                 </div>
               </div>
-              <Clock className="h-8 w-8 text-gray-400" />
+              <Clock className="h-8 w-8 text-gray-400 flex-shrink-0" />
             </div>
           </div>
         </div>
@@ -199,7 +199,7 @@ export default function Reports() {
             <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
               <BarChart3 className="h-8 w-8 text-gray-400" />
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Ad-Hoc Reports</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">More Insights</h2>
             <p className="text-gray-600">Coming Soon</p>
             <p className="text-sm text-gray-500 mt-2">
               Create custom reports with specific date ranges and filters

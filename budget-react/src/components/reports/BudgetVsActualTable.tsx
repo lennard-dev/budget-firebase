@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { ChevronDown, ChevronRight, AlertCircle } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -20,8 +20,18 @@ interface BudgetVsActualTableProps {
   disabled?: boolean;
 }
 
-export default function BudgetVsActualTable({ categories, disabled }: BudgetVsActualTableProps) {
+const BudgetVsActualTable = memo(function BudgetVsActualTable({ categories, disabled }: BudgetVsActualTableProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+
+  // Handle null/undefined categories
+  if (!categories) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Budget vs Actual</h3>
+        <p className="text-gray-500">No budget data available for this period.</p>
+      </div>
+    );
+  }
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -139,4 +149,6 @@ export default function BudgetVsActualTable({ categories, disabled }: BudgetVsAc
       </div>
     </div>
   );
-}
+});
+
+export default BudgetVsActualTable;
