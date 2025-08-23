@@ -102,16 +102,27 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Page Title with Quick Expense Button */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
-        <button
-          onClick={() => setIsExpenseModalOpen(true)}
-          className="bg-[#2c3e50] hover:bg-[#1a252f] text-white px-5 py-2.5 rounded-lg font-medium transition-colors flex items-center gap-2 shadow-sm"
-        >
-          <Plus className="w-4 h-4" strokeWidth={2} />
-          Quick Expense
-        </button>
+      {/* Top Navigation Bar */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div className="px-6 py-3 flex justify-between items-center">
+          {/* Left-aligned Tab Navigation */}
+          <nav className="flex gap-1">
+            <button
+              className="px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 bg-gray-900 text-white"
+            >
+              Dashboard
+            </button>
+          </nav>
+
+          {/* Right-aligned Action Button */}
+          <button
+            onClick={() => setIsExpenseModalOpen(true)}
+            className="bg-[#2c3e50] hover:bg-[#1a252f] text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 shadow-sm"
+          >
+            <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+            Quick Expense
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}

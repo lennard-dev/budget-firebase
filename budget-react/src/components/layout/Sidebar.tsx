@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Receipt,
   PieChart,
-  Wallet,
   BarChart3,
   Settings
 } from 'lucide-react';
@@ -18,9 +17,8 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/expenses', label: 'Expenses', icon: Receipt },
+  { path: '/transactions', label: 'Transactions', icon: Receipt },
   { path: '/budget', label: 'Budget', icon: PieChart },
-  { path: '/cash-banking', label: 'Cash & Banking', icon: Wallet },
   { path: '/reports', label: 'Reports', icon: BarChart3 }
 ];
 

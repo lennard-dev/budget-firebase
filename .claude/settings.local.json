@@ -76,7 +76,11 @@
       "Bash(firebase apps:list:*)",
       "Bash(sed:*)",
       "Bash(node:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)",
+      "Bash(npx prettier:*)",
+      "Bash(/dev/null)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

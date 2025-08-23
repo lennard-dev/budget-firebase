@@ -1856,11 +1856,39 @@ apiRouter.post("/donors", async (req, res) => {
 
 // ==================== BUDGET ENDPOINTS ====================
 
-// Get budget for a specific month
+// Get all budgets or budget for a specific month (backward compatibility)
 apiRouter.get("/budgets", async (req, res) => {
   try {
+    const startTime = Date.now();
     const uid = req.user.uid;
     const {year, month} = req.query;
+    
+    // If no year/month specified, return all budgets
+    if (!year && !month) {
+      const budgetsSnap = await db.collection("users").doc(uid)
+        .collection("budgets")
+        .orderBy("createdAt", "desc")
+        .get();
+      
+      const budgets = [];
+      for (const doc of budgetsSnap.docs) {
+        const data = doc.data();
+        budgets.push({
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.() || null,
+          updatedAt: data.updatedAt?.toDate?.() || null
+        });
+      }
+      
+      return res.json({
+        success: true,
+        data: budgets
+      });
+    }
+    
+    // Original monthly budget logic (backward compatibility)
+    const {year: yearParam, month: monthParam} = req.query;
     
     if (!year || !month) {
       return res.status(400).json({
@@ -1869,28 +1897,55 @@ apiRouter.get("/budgets", async (req, res) => {
       });
     }
     
-    // Get budget document for the specific month - use budget_allocations collection
     const budgetId = `${year}-${String(month).padStart(2, '0')}`;
-    const budgetDoc = await db.collection("users").doc(uid)
-        .collection("budget_allocations").doc(budgetId).get();
-    
-    // Get actual spending for this month from transactions
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
     
-    const transactionsSnap = await db.collection("users").doc(uid)
+    // CRITICAL OPTIMIZATION: Fetch all data in parallel instead of sequentially
+    const [budgetDoc, transactionsSnap, chartCategoriesSnap, chartSubcategoriesSnap, fallbackCategoriesSnap] = await Promise.all([
+      // 1. Budget allocations
+      db.collection("users").doc(uid)
+        .collection("budget_allocations").doc(budgetId).get(),
+      
+      // 2. Transactions (with limit to prevent memory issues)
+      db.collection("users").doc(uid)
         .collection("all-transactions")
         .where("type", "==", "expense")
         .where("date", ">=", startDate)
         .where("date", "<=", endDate)
-        .get();
+        .limit(1000)  // Prevent memory overflow
+        .get(),
+      
+      // 3. Chart of accounts - categories
+      db.collection("users").doc(uid)
+        .collection("chart_of_accounts")
+        .where("display_as", "==", "category")
+        .get(),
+      
+      // 4. Chart of accounts - ALL subcategories in ONE query (fixes N+1 problem)
+      db.collection("users").doc(uid)
+        .collection("chart_of_accounts")
+        .where("display_as", "==", "subcategory")
+        .get(),
+      
+      // 5. Fallback categories (only used if chart_of_accounts is empty)
+      db.collection("users").doc(uid)
+        .collection("categories")
+        .get()
+    ]);
     
-    // Calculate spending by category
+    // Calculate spending by category (optimized with early aggregation)
     const spendingByCategory = {};
+    let totalSpent = 0;
+    
     transactionsSnap.forEach(doc => {
       const txn = doc.data();
+      // Skip voided transactions
+      if (txn.voided) return;
+      
       const category = txn.category || "Other";
       const subcategory = txn.subcategory || "General";
+      const amount = Math.abs(txn.amount || 0);
       
       if (!spendingByCategory[category]) {
         spendingByCategory[category] = {
@@ -1899,68 +1954,78 @@ apiRouter.get("/budgets", async (req, res) => {
         };
       }
       
-      spendingByCategory[category].total += Math.abs(txn.amount || 0);
+      spendingByCategory[category].total += amount;
+      totalSpent += amount;
       
       if (!spendingByCategory[category].subcategories[subcategory]) {
         spendingByCategory[category].subcategories[subcategory] = 0;
       }
-      spendingByCategory[category].subcategories[subcategory] += Math.abs(txn.amount || 0);
+      spendingByCategory[category].subcategories[subcategory] += amount;
     });
     
-    // Combine budget and spending data
+    // Get budget data
     const budgetData = budgetDoc.exists ? budgetDoc.data() : {};
-    
-    // Handle different data structures from budget_allocations vs budgets
-    // budget_allocations has { categories: { categoryName: { subcategoryName: amount } } }
-    // budgets has { categories: { categoryName: { subcategoryName: amount } } } (same structure)
-    const categoriesGrouped = {};
     let totalBudget = 0;
-    let totalSpent = 0;
+    let useStoredTotal = false;
     
-    // Get all categories from chart_of_accounts ONLY - Professional approach
-    const chartSnap = await db.collection("users").doc(uid)
-        .collection("chart_of_accounts")
-        .where("display_as", "==", "category")
-        .get();
+    if (budgetData.totalBudget && budgetData.totalBudget > 0) {
+      useStoredTotal = true;
+      totalBudget = budgetData.totalBudget;
+    }
     
+    // OPTIMIZATION: Process categories and subcategories efficiently
     let categoriesData = [];
-    const categoryMap = new Map(); // Use Map to deduplicate by name
+    const categoriesGrouped = {};
     
-    // Use chart_of_accounts as single source of truth
-    chartSnap.forEach(doc => {
-      const account = doc.data();
-      const categoryName = account.category_name || account.account_name;
-      // Only add if not already in map (deduplicate by name)
-      if (!categoryMap.has(categoryName)) {
-        const categoryData = {
-          name: categoryName,
-          code: account.account_code,
-          subcategories: []
-        };
-        categoryMap.set(categoryName, categoryData);
-        categoriesData.push(categoryData);
-      }
-    });
-    
-    // Get subcategories for each category
-    for (const cat of categoriesData) {
-      const subsSnap = await db.collection("users").doc(uid)
-          .collection("chart_of_accounts")
-          .where("display_as", "==", "subcategory")
-          .where("category_name", "==", cat.name)
-          .get();
-      
-      subsSnap.forEach(subDoc => {
-        const sub = subDoc.data();
-        cat.subcategories.push({
+    if (!chartCategoriesSnap.empty) {
+      // Build subcategories lookup map ONCE (fixes N+1 problem)
+      const subcategoriesByCategory = {};
+      chartSubcategoriesSnap.forEach(doc => {
+        const sub = doc.data();
+        const categoryName = sub.category_name;
+        if (!subcategoriesByCategory[categoryName]) {
+          subcategoriesByCategory[categoryName] = [];
+        }
+        subcategoriesByCategory[categoryName].push({
           name: sub.subcategory_name || sub.account_name,
           code: sub.account_code
         });
       });
+      
+      // Process categories with pre-grouped subcategories
+      const categoryMap = new Map();
+      chartCategoriesSnap.forEach(doc => {
+        const account = doc.data();
+        const categoryName = account.category_name || account.account_name;
+        
+        if (!categoryMap.has(categoryName)) {
+          const categoryData = {
+            name: categoryName,
+            code: account.account_code,
+            subcategories: subcategoriesByCategory[categoryName] || []
+          };
+          categoryMap.set(categoryName, categoryData);
+          categoriesData.push(categoryData);
+        }
+      });
+    } else if (!fallbackCategoriesSnap.empty) {
+      // Use fallback categories if no chart_of_accounts
+      fallbackCategoriesSnap.forEach(doc => {
+        const category = doc.data();
+        categoriesData.push({
+          name: category.name,
+          code: category.code || '',
+          subcategories: (category.subcategories || []).map(sub => ({
+            name: typeof sub === 'object' ? sub.name : sub,
+            code: ''
+          }))
+        });
+      });
     }
     
-    // If no chart_of_accounts exists, return empty result
+    // If no categories exist at all, return empty result
     if (categoriesData.length === 0) {
+      console.log(`Budget fetch completed in ${Date.now() - startTime}ms (no categories)`);
       return res.json({
         success: true,
         data: {
@@ -1969,58 +2034,41 @@ apiRouter.get("/budgets", async (req, res) => {
           totalRemaining: 0,
           categoriesGrouped: {},
           month: budgetId,
-          message: "No chart of accounts found. Please run migration or setup."
+          message: "No categories found.",
+          loadTime: Date.now() - startTime
         }
       });
     }
     
-    // Process each category
+    // Process all categories in a single pass (optimized)
     categoriesData.forEach(category => {
       const categoryName = category.name;
       const budgetForCategory = (budgetData.categories && budgetData.categories[categoryName]) || {};
       const spendingForCategory = spendingByCategory[categoryName] || { total: 0, subcategories: {} };
       
-      // Calculate totals for this category
       let categoryBudgetTotal = 0;
       const subcategoriesData = [];
       
-      // Handle subcategories
+      // Process subcategories efficiently
       (category.subcategories || []).forEach(sub => {
-        // Extract subcategory name whether it's a string or object
-        let subName = '';
-        let subId = null;
+        const subName = sub.name || sub;
+        if (!subName || typeof subName === 'object') return;
         
-        if (typeof sub === 'object') {
-          subId = sub.id;
-          // Handle corrupted data where name is an object
-          if (typeof sub.name === 'object') {
-            console.warn(`Corrupted subcategory in ${category.name}:`, sub);
-            return; // Skip this corrupted entry
-          }
-          subName = sub.name || '';
-        } else {
-          subName = sub;
-        }
-        
-        // Skip if no valid name
-        if (!subName) return;
-        
-        // Use the NAME to look up budget and spending data
         const subBudget = budgetForCategory[subName] || 0;
         const subSpent = spendingForCategory.subcategories[subName] || 0;
         
         categoryBudgetTotal += subBudget;
         
         subcategoriesData.push({
-          subcategory: subName,  // String name for display
-          subcategory_id: subId, // Include ID for reference
+          subcategory: subName,
+          subcategory_id: sub.code || null,
           budgeted: subBudget,
           spent: subSpent,
           remaining: subBudget - subSpent,
         });
       });
       
-      // Also check for "All" budget (category-level budget)
+      // Add category-level budget if exists
       const categoryLevelBudget = budgetForCategory["All"] || 0;
       if (categoryLevelBudget > 0) {
         categoryBudgetTotal += categoryLevelBudget;
@@ -2031,14 +2079,16 @@ apiRouter.get("/budgets", async (req, res) => {
         spent: spendingForCategory.total,
         remaining: categoryBudgetTotal - spendingForCategory.total,
         subcategories: subcategoriesData,
-        total: categoryBudgetTotal  // Add explicit total field
+        total: categoryBudgetTotal
       };
       
       if (!useStoredTotal) {
         totalBudget += categoryBudgetTotal;
       }
-      totalSpent += spendingForCategory.total;
     });
+    
+    const loadTime = Date.now() - startTime;
+    console.log(`Budget fetch completed in ${loadTime}ms for user ${uid}`);
     
     return res.json({
       success: true,
@@ -2048,6 +2098,7 @@ apiRouter.get("/budgets", async (req, res) => {
         totalRemaining: totalBudget - totalSpent,
         categoriesGrouped,
         month: budgetId,
+        loadTime  // Include for monitoring
       },
     });
     
@@ -2060,11 +2111,62 @@ apiRouter.get("/budgets", async (req, res) => {
   }
 });
 
-// Save/update budget for a specific month
+// Create new budget (new system) or save monthly budget (backward compatibility)
 apiRouter.post("/budgets", async (req, res) => {
   try {
     const uid = req.user.uid;
-    const {year, month, totalBudget, allocations, categories} = req.body;
+    const {year, month, totalBudget, allocations, categories, name, period, totalAmount, startDate, endDate} = req.body;
+    
+    // New budget system
+    if (name && period && totalAmount !== undefined) {
+      const budgetId = `budget_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Get category names for allocations
+      const allocationsWithNames = [];
+      if (allocations && Array.isArray(allocations)) {
+        for (const alloc of allocations) {
+          // Look up category name from chart_of_accounts
+          const categoryDoc = await db.collection("users").doc(uid)
+            .collection("chart_of_accounts")
+            .where("account_code", "==", alloc.categoryCode)
+            .limit(1)
+            .get();
+          
+          const categoryName = !categoryDoc.empty ? 
+            (categoryDoc.docs[0].data().account_name || categoryDoc.docs[0].data().category_name) : 
+            "Unknown";
+          
+          allocationsWithNames.push({
+            categoryCode: alloc.categoryCode,
+            categoryName: categoryName,
+            amount: alloc.amount,
+            spent: 0,
+            remaining: alloc.amount
+          });
+        }
+      }
+      
+      await db.collection("users").doc(uid)
+        .collection("budgets").doc(budgetId).set({
+          name,
+          period,
+          totalAmount,
+          startDate,
+          endDate,
+          allocations: allocationsWithNames,
+          isActive: false,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      
+      return res.json({
+        success: true,
+        id: budgetId
+      });
+    }
+    
+    // Original monthly budget logic (backward compatibility)
+    const {year: yearParam, month: monthParam, totalBudget: totalBudgetParam, allocations: allocationsParam, categories: categoriesParam} = req.body;
     
     if (!year || !month) {
       return res.status(400).json({
@@ -2127,6 +2229,234 @@ apiRouter.post("/budgets", async (req, res) => {
     return res.status(500).json({
       success: false,
       error: error.message,
+    });
+  }
+});
+
+// Update budget
+apiRouter.put("/budgets/:id", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const budgetId = req.params.id;
+    const updates = req.body;
+    
+    // Remove id from updates if present
+    delete updates.id;
+    
+    // Add updated timestamp
+    updates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+    
+    // Get category names for allocations if provided
+    if (updates.allocations && Array.isArray(updates.allocations)) {
+      const allocationsWithNames = [];
+      for (const alloc of updates.allocations) {
+        // Look up category name from chart_of_accounts
+        const categoryDoc = await db.collection("users").doc(uid)
+          .collection("chart_of_accounts")
+          .where("account_code", "==", alloc.categoryCode)
+          .limit(1)
+          .get();
+        
+        const categoryName = !categoryDoc.empty ? 
+          (categoryDoc.docs[0].data().account_name || categoryDoc.docs[0].data().category_name) : 
+          "Unknown";
+        
+        allocationsWithNames.push({
+          categoryCode: alloc.categoryCode,
+          categoryName: categoryName,
+          amount: alloc.amount,
+          spent: alloc.spent || 0,
+          remaining: alloc.amount - (alloc.spent || 0)
+        });
+      }
+      updates.allocations = allocationsWithNames;
+    }
+    
+    await db.collection("users").doc(uid)
+      .collection("budgets").doc(budgetId).update(updates);
+    
+    return res.json({
+      success: true,
+      id: budgetId
+    });
+  } catch (error) {
+    console.error("Error updating budget:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Delete budget
+apiRouter.delete("/budgets/:id", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const budgetId = req.params.id;
+    
+    await db.collection("users").doc(uid)
+      .collection("budgets").doc(budgetId).delete();
+    
+    return res.json({
+      success: true,
+      id: budgetId
+    });
+  } catch (error) {
+    console.error("Error deleting budget:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get budget allocations for settings page
+apiRouter.get("/budgets/allocations", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    
+    // Get the current month's budget
+    const budgetId = `${year}-${month}`;
+    const budgetDoc = await db.collection("users").doc(uid)
+      .collection("monthly_budgets").doc(budgetId).get();
+    
+    if (!budgetDoc.exists) {
+      return res.json({
+        success: true,
+        allocations: {}
+      });
+    }
+    
+    const budgetData = budgetDoc.data();
+    const allocations = {};
+    
+    // Convert nested categories structure to flat allocations
+    if (budgetData.categories) {
+      Object.entries(budgetData.categories).forEach(([category, subcats]) => {
+        if (typeof subcats === 'object') {
+          Object.entries(subcats).forEach(([subcat, amount]) => {
+            if (subcat === 'General' || subcat === 'All') {
+              // Category-level allocation
+              allocations[category] = amount || 0;
+            } else {
+              // Subcategory allocation
+              allocations[`${category}::${subcat}`] = amount || 0;
+            }
+          });
+        }
+      });
+    }
+    
+    return res.json({
+      success: true,
+      allocations
+    });
+  } catch (error) {
+    console.error("Error fetching budget allocations:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Save budget allocations from settings page
+apiRouter.post("/budgets/allocations", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const { allocations } = req.body;
+    
+    if (!allocations || !Array.isArray(allocations)) {
+      return res.status(400).json({
+        success: false,
+        error: "Allocations array is required"
+      });
+    }
+    
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const budgetId = `${year}-${month}`;
+    
+    // Transform allocations array to categories object
+    const categories = {};
+    let totalBudget = 0;
+    
+    for (const { category, subcategory, amount } of allocations) {
+      if (!categories[category]) {
+        categories[category] = {};
+      }
+      
+      if (subcategory) {
+        categories[category][subcategory] = amount || 0;
+      } else {
+        categories[category]["General"] = amount || 0;
+      }
+      
+      totalBudget += amount || 0;
+    }
+    
+    // Save to monthly_budgets collection
+    await db.collection("users").doc(uid)
+      .collection("monthly_budgets").doc(budgetId).set({
+        year,
+        month,
+        totalBudget,
+        categories,
+        updated_at: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    
+    return res.json({
+      success: true,
+      totalBudget,
+      categories
+    });
+  } catch (error) {
+    console.error("Error saving budget allocations:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Activate budget
+apiRouter.put("/budgets/:id/activate", async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const budgetId = req.params.id;
+    
+    // Deactivate all other budgets first
+    const budgetsSnap = await db.collection("users").doc(uid)
+      .collection("budgets").where("isActive", "==", true).get();
+    
+    const batch = db.batch();
+    budgetsSnap.forEach(doc => {
+      batch.update(doc.ref, { isActive: false });
+    });
+    
+    // Activate the selected budget
+    const budgetRef = db.collection("users").doc(uid)
+      .collection("budgets").doc(budgetId);
+    batch.update(budgetRef, { 
+      isActive: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    
+    await batch.commit();
+    
+    return res.json({
+      success: true,
+      id: budgetId
+    });
+  } catch (error) {
+    console.error("Error activating budget:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });

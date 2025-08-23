@@ -7,10 +7,10 @@ import ErrorBoundary from './components/common/ErrorBoundary';
 import Layout from './components/layout/Layout';
 import Login from './components/auth/Login';
 import Dashboard from './pages/Dashboard';
-import Expenses from './pages/Expenses';
 import Budget from './pages/Budget';
-import CashBanking from './pages/CashBanking';
+import Transactions from './pages/Transactions';
 import Reports from './pages/Reports';
+import Settings from './pages/Settings';
 import './styles/globals.css';
 
 function AppContent() {
@@ -36,11 +36,10 @@ function AppContent() {
       <Route path="/" element={<Layout />}>
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
-        <Route path="expenses" element={<Expenses />} />
+        <Route path="transactions" element={<Transactions />} />
         <Route path="budget" element={<Budget />} />
-        <Route path="cash-banking" element={<CashBanking />} />
         <Route path="reports" element={<Reports />} />
-        <Route path="settings" element={<div className="p-6"><h1 className="text-2xl font-bold">Settings</h1><p className="mt-2 text-gray-600">Coming Soon</p></div>} />
+        <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
   );

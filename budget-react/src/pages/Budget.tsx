@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Calendar, ChevronLeft, ChevronRight as ChevronRightIcon, Download } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronLeft, ChevronRight as ChevronRightIcon, Download } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { cn } from '../lib/utils';
 import YearToDateView from '../components/budget/YearToDateView';
 import CurrentYearView from '../components/budget/CurrentYearView';
+import BudgetSettings from '../components/budget/BudgetSettings';
 
 interface BudgetData {
   totalBudget: number;
@@ -24,7 +25,7 @@ interface SubAccountData {
   budgeted: number;
 }
 
-type TabId = 'current-month' | 'year-to-date' | 'current-year';
+type TabId = 'current-month' | 'year-to-date' | 'current-year' | 'budget-settings';
 
 export default function Budget() {
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -195,39 +196,92 @@ export default function Budget() {
   };
 
   return (
-    <div className="p-6">
-      {/* Page Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Budget</h1>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => changeMonth('prev')}
-            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {getMonthOptions().map(option => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={() => changeMonth('next')}
-            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <ChevronRightIcon className="h-4 w-4" />
-          </button>
+    <div className="space-y-6">
+      {/* Top Navigation Bar */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div className="px-6 py-3 flex justify-between items-center">
+          {/* Left-aligned Tab Navigation */}
+          <nav className="flex gap-1">
+            <button
+              onClick={() => setActiveTab('current-month')}
+              className={cn(
+                "px-4 py-2 text-sm font-medium rounded-md transition-all duration-200",
+                activeTab === 'current-month'
+                  ? "bg-gray-900 text-white"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              )}
+            >
+              Current Month
+            </button>
+            <button
+              onClick={() => setActiveTab('year-to-date')}
+              className={cn(
+                "px-4 py-2 text-sm font-medium rounded-md transition-all duration-200",
+                activeTab === 'year-to-date'
+                  ? "bg-gray-900 text-white"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              )}
+            >
+              Year to Date
+            </button>
+            <button
+              onClick={() => setActiveTab('current-year')}
+              className={cn(
+                "px-4 py-2 text-sm font-medium rounded-md transition-all duration-200",
+                activeTab === 'current-year'
+                  ? "bg-gray-900 text-white"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              )}
+            >
+              Current Year
+            </button>
+            <button
+              onClick={() => setActiveTab('budget-settings')}
+              className={cn(
+                "px-4 py-2 text-sm font-medium rounded-md transition-all duration-200",
+                activeTab === 'budget-settings'
+                  ? "bg-gray-900 text-white"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              )}
+            >
+              Budget Settings
+            </button>
+          </nav>
+
+          {/* Right-aligned Month Selector (only visible for current-month tab) */}
+          {activeTab === 'current-month' && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => changeMonth('prev')}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              >
+                {getMonthOptions().map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => changeMonth('next')}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ChevronRightIcon className="h-4 w-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      {activeTab !== 'budget-settings' && (
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <div className="text-sm font-medium text-gray-500">Total Budget</div>
           <div className="mt-1 text-2xl font-bold text-blue-600">{formatCurrency(totalBudget)}</div>
@@ -263,49 +317,11 @@ export default function Budget() {
           </div>
         </div>
       </div>
-
-      {/* Tab Navigation */}
-      <div className="bg-gray-50 rounded-lg p-1 mb-6">
-        <div className="flex gap-1">
-          <button
-            onClick={() => setActiveTab('current-month')}
-            className={cn(
-              "flex-1 px-4 py-2.5 rounded-md font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2",
-              activeTab === 'current-month'
-                ? "bg-blue-100 text-blue-700"
-                : "text-gray-700 hover:bg-gray-200"
-            )}
-          >
-            <Calendar className="h-4 w-4" />
-            Current Month
-          </button>
-          <button
-            onClick={() => setActiveTab('year-to-date')}
-            className={cn(
-              "flex-1 px-4 py-2.5 rounded-md font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2",
-              activeTab === 'year-to-date'
-                ? "bg-blue-100 text-blue-700"
-                : "text-gray-700 hover:bg-gray-200"
-            )}
-          >
-            Year to Date
-          </button>
-          <button
-            onClick={() => setActiveTab('current-year')}
-            className={cn(
-              "flex-1 px-4 py-2.5 rounded-md font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2",
-              activeTab === 'current-year'
-                ? "bg-blue-100 text-blue-700"
-                : "text-gray-700 hover:bg-gray-200"
-            )}
-          >
-            Current Year
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Tab Content */}
-      {activeTab === 'current-month' && (
+      <div>
+        {activeTab === 'current-month' && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200">
           {/* Action Bar */}
           <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex justify-between items-center rounded-t-xl">
@@ -450,16 +466,21 @@ export default function Budget() {
         </div>
       )}
 
-      {activeTab === 'year-to-date' && (
-        <YearToDateView 
-          year={parseInt(year)} 
-          currentMonth={new Date().getMonth() + 1} 
-        />
-      )}
+        {activeTab === 'year-to-date' && (
+          <YearToDateView 
+            year={parseInt(year)} 
+            currentMonth={new Date().getMonth() + 1} 
+          />
+        )}
 
-      {activeTab === 'current-year' && (
-        <CurrentYearView year={parseInt(year)} />
-      )}
+        {activeTab === 'current-year' && (
+          <CurrentYearView year={parseInt(year)} />
+        )}
+
+        {activeTab === 'budget-settings' && (
+          <BudgetSettings />
+        )}
+      </div>
     </div>
   );
 }

@@ -67,22 +67,18 @@ export default function Reports() {
   };
 
   return (
-    <div className="p-6">
-      {/* Page Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Financial Reports</h1>
-      </div>
-
-      {/* Tab Navigation - Moved above cards */}
-      <div className="bg-white rounded-lg border border-gray-200 p-1 mb-6">
-        <div className="flex gap-1">
+    <div className="space-y-6">
+      {/* Tab Navigation */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div className="px-6 py-3">
+          <div className="flex gap-1">
           <button
             onClick={() => setActiveTab('overview')}
             className={cn(
-              "flex-1 px-4 py-2.5 rounded-md font-medium text-sm transition-all duration-200",
+              "px-4 py-2 rounded-md font-medium text-sm transition-all duration-200",
               activeTab === 'overview'
-                ? "bg-blue-50 text-blue-700 border border-blue-200"
-                : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                ? "bg-gray-900 text-white"
+                : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
             )}
           >
             All Reports
@@ -90,10 +86,10 @@ export default function Reports() {
           <button
             onClick={() => setActiveTab('generation')}
             className={cn(
-              "flex-1 px-4 py-2.5 rounded-md font-medium text-sm transition-all duration-200",
+              "px-4 py-2 rounded-md font-medium text-sm transition-all duration-200",
               activeTab === 'generation'
-                ? "bg-blue-50 text-blue-700 border border-blue-200"
-                : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                ? "bg-gray-900 text-white"
+                : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
             )}
           >
             Create Report
@@ -101,20 +97,21 @@ export default function Reports() {
           <button
             onClick={() => setActiveTab('adhoc')}
             className={cn(
-              "flex-1 px-4 py-2.5 rounded-md font-medium text-sm transition-all duration-200",
+              "px-4 py-2 rounded-md font-medium text-sm transition-all duration-200",
               activeTab === 'adhoc'
-                ? "bg-blue-50 text-blue-700 border border-blue-200"
-                : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                ? "bg-gray-900 text-white"
+                : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
             )}
           >
             More Insights
           </button>
+          </div>
         </div>
       </div>
 
       {/* Metric Cards - Only show on overview tab */}
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 h-full">
             <div className="flex items-center justify-between h-full">
               <div className="flex-1">
@@ -185,7 +182,8 @@ export default function Reports() {
       )}
 
       {/* Tab Content */}
-      {activeTab === 'overview' ? (
+      <div>
+        {activeTab === 'overview' ? (
         <ReportOverview onSelectDraftReport={(month: number, year: number) => {
           setActiveTab('generation');
           // Pass the selected month/year to ReportGeneration somehow
@@ -207,6 +205,7 @@ export default function Reports() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
