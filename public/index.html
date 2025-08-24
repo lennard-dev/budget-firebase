@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Budget Management - Loading...</title>
+  <title>Budget Management</title>
+  <meta http-equiv="refresh" content="0; url=/build/">
   <style>
     body {
       margin: 0;
@@ -34,50 +35,17 @@
       color: #666;
       font-size: 14px;
     }
-    .legacy-link {
-      margin-top: 20px;
-      font-size: 12px;
-    }
-    .legacy-link a {
-      color: #007bff;
-      text-decoration: none;
-    }
-    .legacy-link a:hover {
-      text-decoration: underline;
-    }
   </style>
 </head>
 <body>
   <div class="loading-container">
     <div class="spinner"></div>
     <div class="message">Loading Budget Management...</div>
-    <div class="legacy-link">
-      <a href="/legacy/">Use classic version</a>
-    </div>
   </div>
 
   <script>
-    // Check if React build exists
-    const checkReactBuild = async () => {
-      try {
-        const response = await fetch('/build/index.html', { method: 'HEAD' });
-        if (response.ok) {
-          // React build exists, redirect to it
-          window.location.href = '/build/';
-        } else {
-          // No React build, redirect to legacy
-          console.log('React build not found, redirecting to legacy version...');
-          window.location.href = '/legacy/';
-        }
-      } catch (error) {
-        console.error('Error checking React build:', error);
-        // On error, default to legacy
-        window.location.href = '/legacy/';
-      }
-    };
-
-    // Add a small delay to show the loading screen
-    setTimeout(checkReactBuild, 500);
+    // Immediate redirect to React app
+    window.location.href = '/build/';
   </script>
 </body>
 </html>

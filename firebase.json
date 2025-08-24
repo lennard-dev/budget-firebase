@@ -37,43 +37,11 @@
         "function": "api"
       },
       {
-        "source": "/legacy/**",
-        "destination": "/legacy/index.html"
-      },
-      {
-        "source": "/build/dashboard",
+        "source": "/build/**",
         "destination": "/build/index.html"
       },
       {
-        "source": "/build/expenses",
-        "destination": "/build/index.html"
-      },
-      {
-        "source": "/build/budget",
-        "destination": "/build/index.html"
-      },
-      {
-        "source": "/build/cash-banking",
-        "destination": "/build/index.html"
-      },
-      {
-        "source": "/build/reports",
-        "destination": "/build/index.html"
-      },
-      {
-        "source": "/build/settings",
-        "destination": "/build/index.html"
-      },
-      {
-        "source": "/build/admin",
-        "destination": "/build/index.html"
-      },
-      {
-        "source": "/build",
-        "destination": "/build/index.html"
-      },
-      {
-        "source": "/",
+        "source": "/**",
         "destination": "/index.html"
       }
     ]
