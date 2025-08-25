@@ -5,27 +5,33 @@ import { api } from '../services/api';
 import { cn } from '../lib/utils';
 import YearToDateView from '../components/budget/YearToDateView';
 import CurrentYearView from '../components/budget/CurrentYearView';
-import BudgetSettings from '../components/budget/BudgetSettings';
+import AllocationTab from '../components/budget/AllocationTab';
 
 interface BudgetData {
   totalBudget: number;
   totalSpent: number;
-  categoriesGrouped: Record<string, AccountData>;  // Using accounts instead of categories
+  accountsGrouped: Record<string, AccountData>;  // RADICAL: Using accounts directly
 }
 
 interface AccountData {
+  account_name: string;
+  account_code?: string;
+  display_order?: number;
   spent: number;
-  total: number;
-  subcategories?: SubAccountData[];  // Sub-accounts instead of subcategories
+  budgeted: number;
+  remaining: number;
+  subaccounts?: SubAccountData[];
 }
 
 interface SubAccountData {
-  subcategory: string;  // Will be renamed to sub-account in backend
+  account_code: string;
+  account_name: string;
   spent: number;
   budgeted: number;
+  remaining: number;
 }
 
-type TabId = 'current-month' | 'year-to-date' | 'current-year' | 'budget-settings';
+type TabId = 'current-month' | 'year-to-date' | 'current-year' | 'allocation';
 
 export default function Budget() {
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -127,7 +133,7 @@ export default function Budget() {
       setExpandedCategories(new Set());
       setAllExpanded(false);
     } else {
-      const allAccountNames = Object.keys(budgetData?.categoriesGrouped || {});
+      const allAccountNames = Object.keys(budgetData?.accountsGrouped || {});
       setExpandedCategories(new Set(allAccountNames));
       setAllExpanded(true);
     }
@@ -166,21 +172,21 @@ export default function Budget() {
     let csv = `Budget Report - ${monthName}\n\n`;
     csv += 'Account,Sub-Account,Budget,Spent,Remaining,% Used\n';
     
-    Object.entries(budgetData.categoriesGrouped || {}).forEach(([catName, catData]) => {
-      const spent = catData.spent || 0;
-      const budgeted = catData.total || 0;
-      const catRemaining = budgeted - spent;
+    Object.entries(budgetData.accountsGrouped || {}).forEach(([accountCode, accountData]) => {
+      const spent = accountData.spent || 0;
+      const budgeted = accountData.budgeted || 0;
+      const accountRemaining = budgeted - spent;
       const percentage = budgeted > 0 ? (spent / budgeted) * 100 : 0;
       
-      csv += `"${catName}","",${budgeted},${spent},${catRemaining},${percentage.toFixed(1)}%\n`;
+      csv += `"${accountData.account_name || accountCode}","",${budgeted},${spent},${accountRemaining},${percentage.toFixed(1)}%\n`;
       
-      (catData.subcategories || []).forEach(sub => {
+      (accountData.subaccounts || []).forEach(sub => {
         const subSpent = sub.spent || 0;
         const subBudgeted = sub.budgeted || 0;
         const subRemaining = subBudgeted - subSpent;
         const subPercentage = subBudgeted > 0 ? (subSpent / subBudgeted) * 100 : 0;
         
-        csv += `"","${sub.subcategory}",${subBudgeted},${subSpent},${subRemaining},${subPercentage.toFixed(1)}%\n`;
+        csv += `"","${sub.account_name}",${subBudgeted},${subSpent},${subRemaining},${subPercentage.toFixed(1)}%\n`;
       });
     });
     
@@ -236,15 +242,15 @@ export default function Budget() {
               Current Year
             </button>
             <button
-              onClick={() => setActiveTab('budget-settings')}
+              onClick={() => setActiveTab('allocation')}
               className={cn(
                 "px-4 py-2 text-sm font-medium rounded-md transition-all duration-200",
-                activeTab === 'budget-settings'
+                activeTab === 'allocation'
                   ? "bg-gray-900 text-white"
                   : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
               )}
             >
-              Budget Settings
+              Allocation
             </button>
           </nav>
 
@@ -280,7 +286,7 @@ export default function Budget() {
       </div>
 
       {/* Summary Cards */}
-      {activeTab !== 'budget-settings' && (
+      {activeTab !== 'allocation' && (
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <div className="text-sm font-medium text-gray-500">Total Budget</div>
@@ -359,40 +365,48 @@ export default function Budget() {
                   <tr>
                     <td colSpan={7} className="text-center py-8 text-gray-500">Loading budget data...</td>
                   </tr>
-                ) : !budgetData || Object.keys(budgetData.categoriesGrouped || {}).length === 0 ? (
+                ) : !budgetData || Object.keys(budgetData.accountsGrouped || {}).length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center py-8 text-gray-500">No budget data for this period</td>
                   </tr>
                 ) : (
-                  Object.entries(budgetData.categoriesGrouped || {})
-                    .sort((a, b) => a[0].localeCompare(b[0]))
-                    .map(([categoryName, categoryData]) => {
-                      const spent = categoryData.spent || 0;
-                      const budgeted = categoryData.total || 0;
-                      const catRemaining = budgeted - spent;
+                  Object.entries(budgetData.accountsGrouped || {})
+                    .sort((a, b) => {
+                      // Sort by display_order if available, otherwise by account_code
+                      const orderA = a[1].display_order;
+                      const orderB = b[1].display_order;
+                      if (orderA !== undefined && orderB !== undefined) {
+                        return orderA - orderB;
+                      }
+                      return a[0].localeCompare(b[0]);
+                    })
+                    .map(([accountCode, accountData]) => {
+                      const spent = accountData.spent || 0;
+                      const budgeted = accountData.budgeted || 0;
+                      const accountRemaining = budgeted - spent;
                       const percentage = budgeted > 0 ? (spent / budgeted) * 100 : 0;
                       const status = getBudgetStatus(spent, budgeted);
                       const statusText = getBudgetStatusText(spent, budgeted);
-                      const isExpanded = expandedCategories.has(categoryName);
+                      const isExpanded = expandedCategories.has(accountCode);
                       
                       return (
                         <>
-                          <tr key={categoryName} className="border-b border-gray-100 hover:bg-gray-50">
+                          <tr key={accountCode} className="border-b border-gray-100 hover:bg-gray-50">
                             <td className="px-4 py-3">
                               <button
-                                onClick={() => toggleAccount(categoryName)}
+                                onClick={() => toggleAccount(accountCode)}
                                 className="flex items-center gap-2 font-medium text-blue-600 hover:text-blue-800"
                               >
                                 {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                                {categoryName}
+                                {accountData.account_name || accountCode}
                               </button>
                             </td>
                             <td className="px-4 py-3 text-right">{formatCurrency(budgeted)}</td>
                             <td className={cn("px-4 py-3 text-right", spent > budgeted && "text-red-600")}>
                               {formatCurrency(spent)}
                             </td>
-                            <td className={cn("px-4 py-3 text-right", catRemaining < 0 ? "text-red-600" : "text-emerald-600")}>
-                              {formatCurrency(catRemaining)}
+                            <td className={cn("px-4 py-3 text-right", accountRemaining < 0 ? "text-red-600" : "text-emerald-600")}>
+                              {formatCurrency(accountRemaining)}
                             </td>
                             <td className="px-4 py-3 text-center">{formatPercent(percentage)}</td>
                             <td className="px-4 py-3">
@@ -416,17 +430,17 @@ export default function Budget() {
                           </tr>
                           
                           {/* Sub-Accounts */}
-                          {isExpanded && (categoryData.subcategories || []).map(subcategory => {
-                            const subSpent = subcategory.spent || 0;
-                            const subBudgeted = subcategory.budgeted || 0;
+                          {isExpanded && (accountData.subaccounts || []).map(subaccount => {
+                            const subSpent = subaccount.spent || 0;
+                            const subBudgeted = subaccount.budgeted || 0;
                             const subRemaining = subBudgeted - subSpent;
                             const subPercentage = subBudgeted > 0 ? (subSpent / subBudgeted) * 100 : 0;
                             const subStatus = getBudgetStatus(subSpent, subBudgeted);
                             const subStatusText = getBudgetStatusText(subSpent, subBudgeted);
                             
                             return (
-                              <tr key={`${categoryName}-${subcategory.subcategory}`} className="border-b border-gray-50 bg-gray-50/50">
-                                <td className="px-4 py-3 pl-12 text-sm text-gray-600">{subcategory.subcategory}</td>
+                              <tr key={`${accountCode}-${subaccount.account_code}`} className="border-b border-gray-50 bg-gray-50/50">
+                                <td className="px-4 py-3 pl-12 text-sm text-gray-600">{subaccount.account_name}</td>
                                 <td className="px-4 py-3 text-right text-sm">{formatCurrency(subBudgeted)}</td>
                                 <td className={cn("px-4 py-3 text-right text-sm", subSpent > subBudgeted && "text-red-600")}>
                                   {formatCurrency(subSpent)}
@@ -477,8 +491,8 @@ export default function Budget() {
           <CurrentYearView year={parseInt(year)} />
         )}
 
-        {activeTab === 'budget-settings' && (
-          <BudgetSettings />
+        {activeTab === 'allocation' && (
+          <AllocationTab />
         )}
       </div>
     </div>

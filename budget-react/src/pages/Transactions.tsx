@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { TransactionService } from '../services/TransactionService';
+import { getChartOfAccounts } from '../services/api';
 import RecordMovementModal from '../components/modals/RecordMovementModal';
 import RecordIncomeModal from '../components/modals/RecordIncomeModal';
 import AddExpenseModal from '../components/modals/AddExpenseModal';
@@ -133,7 +134,7 @@ export default function Transactions() {
   }, []);
 
   // Fetch expenses from API
-  const { data: expensesData, isLoading: loadingExpenses } = useQuery({
+  const { data: expensesData, isLoading: loadingExpenses, refetch: refetchExpenses } = useQuery({
     queryKey: ['expenses', startDate, endDate, selectedAccount],
     queryFn: async () => {
       const filters: any = {
@@ -161,21 +162,59 @@ export default function Transactions() {
     enabled: activeTab === 'expenses'
   });
 
-  // Fetch categories from API
-  const { data: categoriesData } = useQuery({
-    queryKey: ['categories'],
+  // Fetch chart of accounts from API
+  const { data: accountsData } = useQuery({
+    queryKey: ['chart-of-accounts'],
     queryFn: async () => {
-      const cats = await TransactionService.getCategories();
-      return cats.map((cat: any) => ({
-        id: cat.id || cat.name?.toLowerCase(),
-        name: cat.name,
-        subcategories: cat.subcategories || []
-      }));
+      try {
+        const data = await getChartOfAccounts();
+        return data.data || [];
+      } catch (err) {
+        console.error('Error fetching accounts:', err);
+        // Try enabling mock auth if not already enabled
+        if (!localStorage.getItem('useMockAuth')) {
+          localStorage.setItem('useMockAuth', 'true');
+          // Retry with mock auth
+          try {
+            const data = await getChartOfAccounts();
+            return data.data || [];
+          } catch (retryErr) {
+            console.error('Error fetching accounts with mock auth:', retryErr);
+            return [];
+          }
+        }
+        return [];
+      }
     }
   });
 
   const expenses = expensesData || [];
-  const categories = categoriesData || [];
+  const accounts = accountsData || [];
+  
+  // Extract parent accounts and sub-accounts from chart of accounts
+  const parentAccounts = useMemo(() => {
+    const accountMap = new Map();
+    accounts.forEach((acc: any) => {
+      if (acc.display_as === 'category') {
+        if (!accountMap.has(acc.account_code)) {
+          accountMap.set(acc.account_code, {
+            code: acc.account_code,
+            name: acc.category_name || acc.account_name,
+            subAccounts: []
+          });
+        }
+      } else if (acc.display_as === 'subcategory' && acc.parent_code) {
+        const parent = accountMap.get(acc.parent_code);
+        if (parent) {
+          parent.subAccounts.push({
+            code: acc.account_code,
+            name: acc.subcategory_name || acc.account_name
+          });
+        }
+      }
+    });
+    return Array.from(accountMap.values());
+  }, [accounts]);
 
   useEffect(() => {
     loadData();
@@ -374,11 +413,26 @@ export default function Transactions() {
     }
     
     if (selectedAccount !== 'all') {
-      filtered = filtered.filter(exp => exp.category.toLowerCase() === selectedAccount);
+      // Find matching account name from account code
+      const parentAccount = parentAccounts.find((c: any) => c.code === selectedAccount);
+      if (parentAccount) {
+        filtered = filtered.filter(exp => 
+          exp.category === parentAccount.name || 
+          exp.category?.toLowerCase() === parentAccount.name?.toLowerCase()
+        );
+      }
     }
     
     if (selectedSubAccount !== 'all') {
-      filtered = filtered.filter(exp => exp.subcategory.toLowerCase() === selectedSubAccount);
+      // Find matching sub-account name from account code
+      const parentAccount = parentAccounts.find((c: any) => c.code === selectedAccount);
+      const subAccount = parentAccount?.subAccounts.find((s: any) => s.code === selectedSubAccount);
+      if (subAccount) {
+        filtered = filtered.filter(exp => 
+          exp.subcategory === subAccount.name || 
+          exp.subcategory?.toLowerCase() === subAccount.name?.toLowerCase()
+        );
+      }
     }
     
     if (selectedPaymentMethod !== 'all') {
@@ -831,12 +885,15 @@ export default function Transactions() {
                 <label className="block text-xs font-medium text-gray-700 mb-1">Account</label>
                 <select
                   value={selectedAccount}
-                  onChange={(e) => setSelectedAccount(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedAccount(e.target.value);
+                    setSelectedSubAccount('all'); // Reset sub-account when parent account changes
+                  }}
                   className="w-full h-[38px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 >
                   <option value="all">All</option>
-                  {categories.map((cat: any) => (
-                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  {parentAccounts.map((acc: any) => (
+                    <option key={acc.code} value={acc.code}>{acc.name}</option>
                   ))}
                 </select>
               </div>
@@ -848,11 +905,12 @@ export default function Transactions() {
                   value={selectedSubAccount}
                   onChange={(e) => setSelectedSubAccount(e.target.value)}
                   className="w-full h-[38px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  disabled={selectedAccount === 'all'}
                 >
                   <option value="all">All</option>
                   {selectedAccount !== 'all' && 
-                    categories.find((c: any) => c.id === selectedAccount)?.subcategories.map((sub: string) => (
-                      <option key={sub} value={sub.toLowerCase()}>{sub}</option>
+                    parentAccounts.find((c: any) => c.code === selectedAccount)?.subAccounts.map((sub: any) => (
+                      <option key={sub.code} value={sub.code}>{sub.name}</option>
                     ))
                   }
                 </select>
@@ -1327,7 +1385,11 @@ export default function Transactions() {
       {/* Modals */}
       <AddExpenseModal 
         isOpen={isAddModalOpen} 
-        onClose={() => setIsAddModalOpen(false)} 
+        onClose={() => setIsAddModalOpen(false)}
+        onSuccess={() => {
+          refetchExpenses();
+          loadData();
+        }} 
       />
       
       {selectedExpense && (
@@ -1336,15 +1398,28 @@ export default function Transactions() {
             isOpen={isEditModalOpen} 
             onClose={() => setIsEditModalOpen(false)}
             expense={selectedExpense}
+            onSuccess={() => {
+              refetchExpenses();
+              loadData();
+              setIsEditModalOpen(false);
+            }}
           />
           
           <DeleteConfirmationModal
             isOpen={isDeleteModalOpen}
             onClose={() => setIsDeleteModalOpen(false)}
-            onConfirm={() => {
+            onConfirm={async () => {
               // Handle delete
-              console.log('Deleting expense:', selectedExpense.id);
-              setIsDeleteModalOpen(false);
+              try {
+                await TransactionService.delete(selectedExpense.id);
+                // Refresh the data
+                refetchExpenses();
+                loadData();
+                setIsDeleteModalOpen(false);
+              } catch (error) {
+                console.error('Failed to delete expense:', error);
+                alert('Failed to delete expense. Please try again.');
+              }
             }}
             title="Delete Expense"
             message={`Are you sure you want to delete this expense for €${selectedExpense.amount.toFixed(2)}?`}

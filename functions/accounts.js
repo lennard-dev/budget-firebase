@@ -218,6 +218,11 @@ class AccountsService {
         budget_monthly: accountData.budget_monthly || 0,
         budget_annual: accountData.budget_annual || 0,
 
+        // Additional fields
+        description: accountData.description || null,
+        icon: accountData.icon || null,
+        display_order: accountData.display_order || 999,
+
         // Metadata
         created_at: admin.firestore.FieldValue.serverTimestamp(),
         created_by: accountData.created_by || "system",
@@ -246,6 +251,7 @@ class AccountsService {
       const allowedFields = [
         "account_name", "category_name", "subcategory_name",
         "budget_monthly", "budget_annual", "is_active",
+        "description", "icon", "display_order"
       ];
 
       for (const field of allowedFields) {
@@ -265,6 +271,149 @@ class AccountsService {
     } catch (error) {
       console.error("Error updating account:", error);
       throw error;
+    }
+  }
+
+  /**
+   * Delete account
+   */
+  async deleteAccount(uid, accountCode) {
+    try {
+      // Get the account to find its category/subcategory names
+      const account = await this.getAccount(uid, accountCode);
+      if (!account) {
+        throw new Error("Account not found");
+      }
+
+      // Check if account has transactions
+      // First check by account_code (new system)
+      let txnSnap = await this.db.collection("users").doc(uid)
+          .collection("all-transactions")
+          .where("account_code", "==", accountCode)
+          .limit(1)
+          .get();
+      
+      // If no transactions found by account_code, check legacy fields
+      if (txnSnap.empty) {
+        if (account.display_as === "category" && account.category_name) {
+          txnSnap = await this.db.collection("users").doc(uid)
+              .collection("all-transactions")
+              .where("category", "==", account.category_name)
+              .limit(1)
+              .get();
+        } else if (account.display_as === "subcategory" && account.subcategory_name) {
+          txnSnap = await this.db.collection("users").doc(uid)
+              .collection("all-transactions")
+              .where("subcategory", "==", account.subcategory_name)
+              .limit(1)
+              .get();
+        }
+      }
+
+      if (!txnSnap.empty) {
+        throw new Error("Cannot delete account with existing transactions");
+      }
+
+      // Check if account has subaccounts
+      const subSnap = await this.db.collection("users").doc(uid)
+          .collection("chart_of_accounts")
+          .where("parent_code", "==", accountCode)
+          .limit(1)
+          .get();
+
+      if (!subSnap.empty) {
+        throw new Error("Cannot delete account with subaccounts");
+      }
+
+      // Check if account has budget allocations
+      const budgetSnap = await this.db.collection("users").doc(uid)
+          .collection("budget_allocations")
+          .get();
+
+      for (const doc of budgetSnap.docs) {
+        const data = doc.data();
+        if (data.accounts && data.accounts[accountCode]) {
+          throw new Error("Cannot delete account with budget allocations");
+        }
+      }
+
+      // Delete the account
+      await this.db.collection("users").doc(uid)
+          .collection("chart_of_accounts")
+          .doc(accountCode)
+          .delete();
+
+      return true;
+    } catch (error) {
+      console.error("Error deleting account:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Validate account code uniqueness
+   */
+  async validateAccountCode(uid, accountCode) {
+    try {
+      const doc = await this.db.collection("users").doc(uid)
+          .collection("chart_of_accounts")
+          .doc(accountCode)
+          .get();
+
+      return !doc.exists;
+    } catch (error) {
+      console.error("Error validating account code:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Generate next account code
+   */
+  async generateNextAccountCode(uid, parentCode = null) {
+    try {
+      let query = this.db.collection("users").doc(uid)
+          .collection("chart_of_accounts");
+
+      if (parentCode) {
+        // Generate subaccount code
+        query = query.where("parent_code", "==", parentCode);
+      } else {
+        // Generate category code
+        query = query.where("display_as", "==", "category");
+      }
+
+      const snapshot = await query.get();
+
+      if (parentCode) {
+        // For subaccounts, increment from parent code
+        const parentNum = parseInt(parentCode);
+        let maxCode = parentNum;
+
+        snapshot.forEach((doc) => {
+          const code = parseInt(doc.data().account_code);
+          if (code > maxCode) {
+            maxCode = code;
+          }
+        });
+
+        return String(maxCode + 1);
+      } else {
+        // For categories, increment by 100
+        let maxCode = 5000; // Start from 5000 for expense accounts
+
+        snapshot.forEach((doc) => {
+          const code = parseInt(doc.data().account_code);
+          if (code >= 5000 && code < 6000 && code > maxCode) {
+            maxCode = code;
+          }
+        });
+
+        return String(Math.floor(maxCode / 100) * 100 + 100);
+      }
+    } catch (error) {
+      console.error("Error generating account code:", error);
+      return null;
     }
   }
 

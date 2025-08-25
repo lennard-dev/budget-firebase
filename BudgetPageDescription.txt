@@ -1,0 +1,164 @@
+## Revised Budget Settings Page Structure and Functionality
+
+### **Page Location**
+This is a dedicated section within Settings, accessed via Settings → Budget Settings tab. It replaces the previous modal-based approach.
+
+### **Page Layout Structure**
+
+The page consists of three main sections stacked vertically:
+
+#### **1. Budget Planning Period Section**
+Top configuration panel containing:
+- **Planning Period Dropdown**: Select duration (Quarterly/3 months, Bi-annual/6 months, Annual/12 months, Custom)
+- **Fiscal Year Start Dropdown**: Select which month begins the fiscal year (January through December)
+- **Auto-renewal Checkbox**: "Automatically renew budget after period ends"
+- **Current Configuration Text**: Displays summary like "12 months starting from January, with automatic renewal"
+
+#### **2. Monthly Budget Allocation Section**
+Main budget entry interface with:
+
+**Month Navigation Tabs**:
+- Horizontal row of 12 month tabs (January through December)
+- Active month highlighted with different background
+- Clicking a tab loads that month's budget allocations
+- **Mobile**: Tabs become swipeable - swipe left/right to change months
+
+**Bulk Action Buttons** (below tabs):
+- "Expand All" - Opens all account categories to show sub-accounts
+- "Copy from Previous" - Copies previous month's allocations to current month
+- "Copy to Remaining" - Applies current month's allocations to all future months
+
+**Account Categories List**:
+- **Draggable account cards** with grip handle (⋮⋮) on left side for reordering
+- Expandable/collapsible account cards (e.g., Administration, Facility, Office)
+- Each account shows:
+  - **Icon** representing account type (👥, 🏢, 📦, etc.)
+  - Account name (no visible codes)
+  - Chevron icon for expand/collapse
+  - Total allocated amount on the right
+  - Euro symbol and formatted number (e.g., "€ 1500")
+- **Mobile**: Sections collapse by default to reduce scrolling
+
+**Expanded Account Details**:
+- When expanded, shows indented sub-accounts
+- Each sub-account has:
+  - Name only (no codes visible)
+  - Number input field for budget amount
+  - **Mobile**: Opens optimized number pad on focus
+  - Placeholder shows "0" when empty
+  - Values right-aligned
+
+**Add Account Button**:
+- Dashed border card at bottom of list
+- Plus icon with "Add Budget Account" text
+- Opens modal when clicked
+
+#### **3. Total Monthly Budget Section**
+Summary footer showing:
+- "Total Monthly Budget" label
+- Account and sub-account count (e.g., "4 accounts • 0 sub-accounts")
+- Large total amount display (e.g., "€ 6,300")
+- Action buttons: "Export", "Reset Changes", "Save Budget"
+
+### **Add Budget Account Modal**
+
+Modal contains:
+
+**Account Information Section**:
+- **Icon Selection Dropdown**: 
+  - Shows "Select Icon" with preview
+  - Opens dropdown with categorized icons:
+    - People: 👥 Staff, 👤 Volunteers, 🎓 Training
+    - Facilities: 🏢 Office, 🏠 Housing, 🔧 Maintenance
+    - Operations: 📦 Supplies, 💻 Technology, 📞 Communications
+    - Finance: 💰 Fundraising, 💳 Banking, 📊 Accounting
+    - Programs: 🎯 Direct Services, 🎨 Activities, 🚐 Transportation
+  - Selected icon displays next to account name in list
+- Account Name field (required)
+- Description textarea
+- Active checkbox (checked by default)
+
+**Sub-accounts Section**:
+- "Add Sub-account" button adds individual entry fields
+- Each sub-account row has:
+  - Name input field
+  - Optional description field
+  - Remove (×) button
+- Bulk Add Sub-accounts textarea:
+  - Enter multiple sub-accounts (one per line)
+  - "Add from List" button processes bulk entry
+
+**Modal Actions**:
+- Cancel button
+- Save Account button
+
+### **Functional Workflow**
+
+#### **Initial Setup Flow**:
+1. User configures fiscal year and planning period
+2. System generates 12 month tabs based on fiscal year start
+3. User navigates to first month (or current month)
+
+#### **Budget Entry Flow**:
+1. User clicks month tab (or swipes on mobile) to select planning month
+2. If no accounts exist, clicks "Add Budget Account"
+3. In modal:
+   - Selects appropriate icon from dropdown
+   - Enters account name and sub-accounts
+4. After saving, account appears in list with selected icon
+5. User can drag accounts to reorder by priority
+6. User expands account to reveal sub-accounts
+7. Enters budget amounts in sub-account fields
+8. System auto-calculates account totals
+9. Total Monthly Budget updates in real-time
+
+#### **Bulk Operations Flow**:
+1. **Copy from Previous**: System copies all values from previous month, preserving account structure
+2. **Copy to Remaining**: Current month's values replicate to all subsequent months
+3. **Expand/Collapse All**: Toggles all account visibility simultaneously
+
+#### **Mobile-Specific Behaviors**:
+- **Month Navigation**: Swipe gesture moves between months with smooth transition
+- **Collapsed by Default**: All accounts start collapsed to minimize scrolling
+- **Number Entry**: Tapping amount field opens optimized number pad with:
+  - Large touch targets
+  - Decimal point prominently displayed
+  - Quick amounts (100, 500, 1000, 5000)
+  - Done button to confirm
+
+### **Drag-and-Drop Functionality**
+
+**Desktop**:
+- Hover over account shows grip handle (⋮⋮)
+- Click and drag to reorder
+- Drop zone highlights when dragging
+- Smooth animation on drop
+
+**Mobile**:
+- Long press activates drag mode
+- Haptic feedback on activation
+- Account lifts slightly when draggable
+- Other accounts shift to show drop zones
+
+### **Key Behavioral Rules**
+
+1. **Account Hierarchy**: Two levels only - Accounts and Sub-accounts
+2. **Auto-calculation**: Account totals sum from sub-account allocations
+3. **Icons Required**: Each account must have an icon selected
+4. **Reorder Persistence**: Account order saves and applies to all months
+5. **Month Context**: Each month maintains independent allocations
+6. **Zero Defaults**: Unallocated items show 0, not empty
+7. **Currency Formatting**: All amounts display with € symbol and thousand separators
+
+### **State Management**
+
+The page maintains:
+- Current selected month
+- Expanded/collapsed state per account
+- Account display order (from drag-and-drop)
+- Selected icons per account
+- Unsaved changes flag
+- Account structure (persists across months)
+- Individual month allocations
+
+This structure provides a cleaner, more intuitive interface by removing technical codes, adding visual icons for quick recognition, enabling priority-based ordering through drag-and-drop, and optimizing the mobile experience with swipe navigation and smart collapsing.

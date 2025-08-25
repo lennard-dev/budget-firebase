@@ -4,22 +4,28 @@ import { useQueries } from '@tanstack/react-query';
 import { api } from '../../services/api';
 import { cn } from '../../lib/utils';
 
-interface CategoryData {
-  spent: number;
-  total: number;
-  subcategories?: SubcategoryData[];
-}
-
-interface SubcategoryData {
-  subcategory: string;
+interface AccountData {
+  account_name: string;
+  account_code?: string;
+  display_order?: number;
   spent: number;
   budgeted: number;
+  remaining: number;
+  subaccounts?: SubAccountData[];
+}
+
+interface SubAccountData {
+  account_code: string;
+  account_name: string;
+  spent: number;
+  budgeted: number;
+  remaining: number;
 }
 
 interface BudgetData {
   totalBudget: number;
   totalSpent: number;
-  categoriesGrouped: Record<string, CategoryData>;
+  accountsGrouped: Record<string, AccountData>;  // RADICAL: Changed from categoriesGrouped
 }
 
 type ViewState = 'actuals' | 'actuals-vs-budget' | 'budget';
@@ -57,30 +63,40 @@ export default function CurrentYearView({ year }: CurrentYearViewProps) {
   });
 
   const isLoading = monthQueries.some(query => query.isLoading);
-  const monthlyData: Record<string, BudgetData['categoriesGrouped']> = {};
+  const monthlyData: Record<string, BudgetData['accountsGrouped']> = {};
   const yearTotals: Record<string, any> = {};
 
   // Process monthly data
   monthQueries.forEach(query => {
     if (query.data) {
       const { key, data } = query.data;
-      monthlyData[key] = data.categoriesGrouped || {};
+      monthlyData[key] = data.accountsGrouped || {};
       
       // Accumulate year totals
-      Object.entries(data.categoriesGrouped || {}).forEach(([cat, catData]) => {
-        if (!yearTotals[cat]) {
-          yearTotals[cat] = { actual: 0, budget: 0, subcategories: {} };
+      Object.entries(data.accountsGrouped || {}).forEach(([accountCode, accountData]) => {
+        if (!yearTotals[accountCode]) {
+          yearTotals[accountCode] = { 
+            account_name: accountData.account_name,
+            display_order: accountData.display_order || 999,
+            actual: 0, 
+            budget: 0, 
+            subaccounts: {} 
+          };
         }
-        yearTotals[cat].actual += catData.spent || 0;
-        yearTotals[cat].budget += catData.total || 0;
+        yearTotals[accountCode].actual += accountData.spent || 0;
+        yearTotals[accountCode].budget += accountData.budgeted || 0;
         
-        (catData.subcategories || []).forEach(sub => {
-          const subKey = sub.subcategory;
-          if (!yearTotals[cat].subcategories[subKey]) {
-            yearTotals[cat].subcategories[subKey] = { actual: 0, budget: 0 };
+        (accountData.subaccounts || []).forEach(sub => {
+          const subKey = sub.account_code;
+          if (!yearTotals[accountCode].subaccounts[subKey]) {
+            yearTotals[accountCode].subaccounts[subKey] = { 
+              account_name: sub.account_name,
+              actual: 0, 
+              budget: 0 
+            };
           }
-          yearTotals[cat].subcategories[subKey].actual += sub.spent || 0;
-          yearTotals[cat].subcategories[subKey].budget += sub.budgeted || 0;
+          yearTotals[accountCode].subaccounts[subKey].actual += sub.spent || 0;
+          yearTotals[accountCode].subaccounts[subKey].budget += sub.budgeted || 0;
         });
       });
     }
@@ -93,13 +109,13 @@ export default function CurrentYearView({ year }: CurrentYearViewProps) {
     }).format(amount);
   };
 
-  const toggleCategory = (categoryName: string) => {
+  const toggleAccount = (accountCode: string) => {
     setExpandedCategories(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(categoryName)) {
-        newSet.delete(categoryName);
+      if (newSet.has(accountCode)) {
+        newSet.delete(accountCode);
       } else {
-        newSet.add(categoryName);
+        newSet.add(accountCode);
       }
       return newSet;
     });
@@ -162,34 +178,34 @@ export default function CurrentYearView({ year }: CurrentYearViewProps) {
 
   const exportData = () => {
     let csv = `Current Year Budget Report - ${year}\n\n`;
-    csv += 'Category,Subcategory,';
+    csv += 'Account,Sub-Account,';
     
     months.forEach(m => {
       csv += `${m.name} Actual,${m.name} Budget,`;
     });
     csv += 'Year Total,Year Budget,Variance %\n';
     
-    Object.entries(yearTotals).sort((a, b) => a[0].localeCompare(b[0])).forEach(([catName, catTotals]) => {
-      const variance = catTotals.budget > 0 ? 
-        ((catTotals.actual - catTotals.budget) / catTotals.budget * 100) : 0;
+    Object.entries(yearTotals).forEach(([accountCode, accountTotals]) => {
+      const variance = accountTotals.budget > 0 ? 
+        ((accountTotals.actual - accountTotals.budget) / accountTotals.budget * 100) : 0;
       
-      csv += `"${catName}","",`;
+      csv += `"${accountTotals.account_name || accountCode}","",`;
       months.forEach(m => {
         const key = `${m.year}-${m.month}`;
-        const monthData = monthlyData[key]?.[catName] || {};
-        csv += `${monthData.spent || 0},${monthData.total || 0},`;
+        const monthData = monthlyData[key]?.[accountCode] || {};
+        csv += `${monthData.spent || 0},${monthData.budgeted || 0},`;
       });
-      csv += `${catTotals.actual},${catTotals.budget},${variance.toFixed(1)}%\n`;
+      csv += `${accountTotals.actual},${accountTotals.budget},${variance.toFixed(1)}%\n`;
       
-      Object.entries(catTotals.subcategories).forEach(([subName, subTotals]: [string, any]) => {
+      Object.entries(accountTotals.subaccounts).forEach(([subCode, subTotals]: [string, any]) => {
         const subVariance = subTotals.budget > 0 ? 
           ((subTotals.actual - subTotals.budget) / subTotals.budget * 100) : 0;
         
-        csv += `"","${subName}",`;
+        csv += `"","${subTotals.account_name || subCode}",`;
         months.forEach(m => {
           const key = `${m.year}-${m.month}`;
-          const catData = monthlyData[key]?.[catName] || {};
-          const subData = (catData.subcategories || []).find(s => s.subcategory === subName);
+          const accountData = monthlyData[key]?.[accountCode] || {};
+          const subData = (accountData.subaccounts || []).find(s => s.account_code === subCode);
           csv += `${subData?.spent || 0},${subData?.budgeted || 0},`;
         });
         csv += `${subTotals.actual},${subTotals.budget},${subVariance.toFixed(1)}%\n`;
@@ -252,7 +268,7 @@ export default function CurrentYearView({ year }: CurrentYearViewProps) {
           <thead className="sticky top-0 bg-white z-10">
             <tr className="border-b border-gray-200">
               <th className="sticky left-0 bg-white z-20 text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[200px] border-r-2 border-gray-200">
-                Category
+                Account
               </th>
               {months.map(m => (
                 <th 
@@ -290,34 +306,44 @@ export default function CurrentYearView({ year }: CurrentYearViewProps) {
                 </td>
               </tr>
             ) : (
-              Object.entries(yearTotals).sort((a, b) => a[0].localeCompare(b[0])).map(([catName, catTotals]) => {
-                const variance = catTotals.budget > 0 ? 
-                  ((catTotals.actual - catTotals.budget) / catTotals.budget * 100) : 0;
-                const isExpanded = expandedCategories.has(catName);
+              Object.entries(yearTotals)
+                .sort((a, b) => {
+                  // Sort by display_order if available
+                  const orderA = a[1].display_order;
+                  const orderB = b[1].display_order;
+                  if (orderA !== undefined && orderB !== undefined) {
+                    return orderA - orderB;
+                  }
+                  return a[0].localeCompare(b[0]);
+                })
+                .map(([accountCode, accountTotals]) => {
+                const variance = accountTotals.budget > 0 ? 
+                  ((accountTotals.actual - accountTotals.budget) / accountTotals.budget * 100) : 0;
+                const isExpanded = expandedCategories.has(accountCode);
                 
                 return (
                   <>
-                    <tr key={catName} className="border-b border-gray-100 hover:bg-gray-50">
+                    <tr key={accountCode} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="sticky left-0 bg-white z-10 px-4 py-2 border-r-2 border-gray-200">
                         <button
-                          onClick={() => toggleCategory(catName)}
+                          onClick={() => toggleAccount(accountCode)}
                           className="flex items-center gap-2 font-medium text-blue-600 hover:text-blue-800"
                         >
                           {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                          {catName}
+                          {accountTotals.account_name || accountCode}
                         </button>
                       </td>
                       {months.map(m => {
                         const key = `${m.year}-${m.month}`;
-                        const monthData = monthlyData[key]?.[catName] || {};
+                        const monthData = monthlyData[key]?.[accountCode] || {};
                         const isFutureMonth = m.month > currentMonth;
-                        return renderMonthCell(monthData.spent || 0, monthData.total || 0, isFutureMonth);
+                        return renderMonthCell(monthData.spent || 0, monthData.budgeted || 0, isFutureMonth);
                       })}
                       <td className="px-3 py-2 text-right font-semibold border-r-2 border-gray-200">
-                        {formatCurrency(catTotals.actual)}
+                        {formatCurrency(accountTotals.actual)}
                       </td>
                       <td className="px-3 py-2 text-right border-r border-gray-100">
-                        {formatCurrency(catTotals.budget)}
+                        {formatCurrency(accountTotals.budget)}
                       </td>
                       <td className={cn(
                         "px-3 py-2 text-center font-medium",
@@ -327,19 +353,19 @@ export default function CurrentYearView({ year }: CurrentYearViewProps) {
                       </td>
                     </tr>
                     
-                    {isExpanded && Object.entries(catTotals.subcategories).map(([subName, subTotals]: [string, any]) => {
+                    {isExpanded && Object.entries(accountTotals.subaccounts).map(([subCode, subTotals]: [string, any]) => {
                       const subVariance = subTotals.budget > 0 ? 
                         ((subTotals.actual - subTotals.budget) / subTotals.budget * 100) : 0;
                       
                       return (
-                        <tr key={`${catName}-${subName}`} className="border-b border-gray-50 bg-gray-50/50">
+                        <tr key={`${accountCode}-${subCode}`} className="border-b border-gray-50 bg-gray-50/50">
                           <td className="sticky left-0 bg-gray-50/50 z-10 px-4 py-2 pl-12 text-sm text-gray-600 border-r-2 border-gray-200">
-                            {subName}
+                            {subTotals.account_name || subCode}
                           </td>
                           {months.map(m => {
                             const key = `${m.year}-${m.month}`;
-                            const catData = monthlyData[key]?.[catName] || {};
-                            const subData = (catData.subcategories || []).find(s => s.subcategory === subName);
+                            const accountData = monthlyData[key]?.[accountCode] || {};
+                            const subData = (accountData.subaccounts || []).find(s => s.account_code === subCode);
                             const isFutureMonth = m.month > currentMonth;
                             return renderMonthCell(subData?.spent || 0, subData?.budgeted || 0, isFutureMonth);
                           })}

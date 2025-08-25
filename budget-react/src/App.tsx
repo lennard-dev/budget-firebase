@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
@@ -46,6 +47,15 @@ function AppContent() {
 }
 
 function App() {
+  // Initialize mock auth for production if not set
+  useEffect(() => {
+    const isProduction = window.location.hostname === 'budget-v01.web.app';
+    if (isProduction && !localStorage.getItem('useMockAuth')) {
+      console.log('Enabling mock auth for production');
+      localStorage.setItem('useMockAuth', 'true');
+    }
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>

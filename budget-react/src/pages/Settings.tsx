@@ -1,8 +1,29 @@
-import { useState } from 'react';
-import { Plus, Edit2, Trash2, ChevronDown, ChevronRight, Save, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, Edit2, Trash2, ChevronDown, ChevronRight, Save, X, GripVertical } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+} from '@dnd-kit/core';
+import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { api } from '../services/api';
 import { cn } from '../lib/utils';
+import toast, { Toaster } from 'react-hot-toast';
+import { getIconByValue, suggestIconForAccount, DEFAULT_ACCOUNT_ICON } from '../lib/account-icons';
+import IconPicker from '../components/ui/IconPicker';
 
 type TabId = 'budgets' | 'accounts' | 'payment-methods' | 'donors';
 
@@ -14,8 +35,10 @@ interface ChartAccount {
   display_as: 'category' | 'subcategory';
   parent_code?: string;
   category_name?: string;
+  display_order?: number;
   is_active: boolean;
   description?: string;
+  icon?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -62,15 +85,71 @@ interface BudgetAllocation {
   percentage?: number;
 }
 
+// Sortable Account Item Component
+interface SortableAccountItemProps {
+  account: any;
+  children: React.ReactNode;
+}
+
+function SortableAccountItem({ account, children }: SortableAccountItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ 
+    id: account.account_code,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div 
+      ref={setNodeRef} 
+      style={style}
+      className={cn(
+        "border rounded-lg transition-all",
+        isDragging ? "border-blue-400 shadow-lg z-10" : "border-gray-200"
+      )}
+    >
+      <div className="p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3 flex-1">
+          {/* Drag Handle */}
+          <div
+            {...attributes}
+            {...listeners}
+            className="cursor-grab hover:cursor-grabbing text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <GripVertical className="w-5 h-5" />
+          </div>
+          
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<TabId>('budgets');
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
+  const [draggedAccount, setDraggedAccount] = useState<ChartAccount | null>(null);
+  const [orderedAccounts, setOrderedAccounts] = useState<ChartAccount[]>([]);
+  const [saveTimer, setSaveTimer] = useState<NodeJS.Timeout | null>(null);
   const [editingAccount, setEditingAccount] = useState<ChartAccount | null>(null);
   const [editingDescription, setEditingDescription] = useState<{ [key: string]: string }>({});
+  const [editingIcon, setEditingIcon] = useState<{ [key: string]: boolean }>({});
   const [isAddingAccount, setIsAddingAccount] = useState(false);
   const [newAccount, setNewAccount] = useState({ 
     name: '', 
     code: '', 
+    icon: '',
     description: '',
     subaccounts: [{ name: '', description: '' }] 
   });
@@ -136,16 +215,49 @@ export default function Settings() {
     enabled: activeTab === 'donors'
   });
 
-  // Group accounts by category
-  const groupedAccounts = accountsData?.reduce((acc: any, account: ChartAccount) => {
-    if (account.display_as === 'category') {
-      acc[account.account_code] = {
-        ...account,
-        subaccounts: []
-      };
+  // Initialize ordered accounts for drag and drop
+  useEffect(() => {
+    if (accountsData) {
+      const categoryAccounts = accountsData.filter((a: ChartAccount) => a.display_as === 'category');
+      
+      setOrderedAccounts(prevOrdered => {
+        // If we already have an order, maintain it but update the account data
+        if (prevOrdered.length > 0) {
+          const updatedAccounts = prevOrdered.map(orderedAcc => {
+            const updatedData = categoryAccounts.find((a: ChartAccount) => a.account_code === orderedAcc.account_code);
+            return updatedData || orderedAcc;
+          });
+          
+          // Add any new accounts that weren't in the ordered list
+          const newAccounts = categoryAccounts.filter(
+            (acc: ChartAccount) => !prevOrdered.find(o => o.account_code === acc.account_code)
+          );
+          
+          return [...updatedAccounts, ...newAccounts];
+        } else {
+          // Initial load
+          return categoryAccounts;
+        }
+      });
     }
+  }, [accountsData]);
+
+  // Auto-suggest icon based on account name
+  useEffect(() => {
+    if (newAccount.name && !newAccount.icon) {
+      const suggested = suggestIconForAccount(newAccount.name);
+      setNewAccount(prev => ({ ...prev, icon: suggested }));
+    }
+  }, [newAccount.name]);
+
+  // Group accounts by category (using ordered accounts for display)
+  const groupedAccounts = orderedAccounts.reduce((acc: any, account: ChartAccount) => {
+    acc[account.account_code] = {
+      ...account,
+      subaccounts: []
+    };
     return acc;
-  }, {}) || {};
+  }, {});
 
   // Add subaccounts to their parent categories
   accountsData?.forEach((account: ChartAccount) => {
@@ -153,6 +265,18 @@ export default function Settings() {
       groupedAccounts[account.parent_code].subaccounts.push(account);
     }
   });
+
+  // DnD sensors setup
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   // Account mutations
   const createAccountMutation = useMutation({
@@ -163,7 +287,7 @@ export default function Settings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
       setIsAddingAccount(false);
-      setNewAccount({ name: '', code: '', description: '', subaccounts: [{ name: '', description: '' }] });
+      setNewAccount({ name: '', code: '', icon: '', description: '', subaccounts: [{ name: '', description: '' }] });
     }
   });
 
@@ -176,6 +300,7 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
       setEditingAccount(null);
       setEditingDescription({});
+      setEditingIcon({});
     }
   });
 
@@ -284,6 +409,78 @@ export default function Settings() {
     }
   });
 
+  // Save order mutation
+  const saveOrderMutation = useMutation({
+    mutationFn: async (accountOrders: { account_code: string; display_order: number }[]) => {
+      const response = await api.put('/chart-of-accounts/reorder', { accountOrders });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
+      toast.success('Account order saved');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to save order');
+    }
+  });
+
+  // Handle drag start
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const account = orderedAccounts.find(a => a.account_code === active.id);
+    setDraggedAccount(account || null);
+  };
+
+  // Handle drag end with auto-save
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setDraggedAccount(null);
+
+    if (over && active.id !== over.id) {
+      setOrderedAccounts((items) => {
+        const oldIndex = items.findIndex(i => i.account_code === active.id);
+        const newIndex = items.findIndex(i => i.account_code === over.id);
+        const newOrder = arrayMove(items, oldIndex, newIndex);
+        
+        // Update display_order values
+        const updatedOrder = newOrder.map((account, index) => ({
+          ...account,
+          display_order: index + 1
+        }));
+        
+        // Auto-save after 2 second delay
+        if (saveTimer) clearTimeout(saveTimer);
+        const timer = setTimeout(() => {
+          // Prepare save data - include parent accounts and their sub-accounts
+          const accountOrders: { account_code: string; display_order: number }[] = [];
+          let orderIndex = 1;
+          
+          updatedOrder.forEach(parent => {
+            // Add parent account
+            accountOrders.push({
+              account_code: parent.account_code,
+              display_order: orderIndex++
+            });
+            
+            // Add sub-accounts in their current order
+            const subs = groupedAccounts[parent.account_code]?.subaccounts || [];
+            subs.forEach((sub: ChartAccount) => {
+              accountOrders.push({
+                account_code: sub.account_code,
+                display_order: orderIndex++
+              });
+            });
+          });
+          
+          saveOrderMutation.mutate(accountOrders);
+        }, 2000);
+        setSaveTimer(timer);
+        
+        return updatedOrder;
+      });
+    }
+  };
+
   const toggleAccountExpansion = (accountCode: string) => {
     const newExpanded = new Set(expandedAccounts);
     if (newExpanded.has(accountCode)) {
@@ -301,6 +498,7 @@ export default function Settings() {
     const accountData = {
       account_name: newAccount.name.trim(),
       account_code: newAccount.code.trim() || undefined, // Let backend generate if not provided
+      icon: newAccount.icon || undefined,
       description: newAccount.description.trim(),
       subaccounts: newAccount.subaccounts
         .filter(sub => sub.name.trim())
@@ -399,8 +597,10 @@ export default function Settings() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Tab Navigation */}
+    <>
+      <Toaster position="top-right" />
+      <div className="space-y-6">
+        {/* Tab Navigation */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200">
         <div className="px-6 py-3">
           <div className="flex gap-1">
@@ -750,7 +950,7 @@ export default function Settings() {
                   <button
                     onClick={() => {
                       setIsAddingAccount(false);
-                      setNewAccount({ name: '', code: '', description: '', subaccounts: [{ name: '', description: '' }] });
+                      setNewAccount({ name: '', code: '', icon: '', description: '', subaccounts: [{ name: '', description: '' }] });
                     }}
                     className="text-gray-500 hover:text-gray-700"
                   >
@@ -784,6 +984,14 @@ export default function Settings() {
                         placeholder="e.g., 5100"
                       />
                     </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Icon</label>
+                    <IconPicker
+                      value={newAccount.icon}
+                      onChange={(iconValue) => setNewAccount(prev => ({ ...prev, icon: iconValue }))}
+                    />
                   </div>
                   
                   <div>
@@ -894,7 +1102,7 @@ export default function Settings() {
                     <button
                       onClick={() => {
                         setIsAddingAccount(false);
-                        setNewAccount({ name: '', code: '', description: '', subaccounts: [{ name: '', description: '' }] });
+                        setNewAccount({ name: '', code: '', icon: '', description: '', subaccounts: [{ name: '', description: '' }] });
                       }}
                       className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-sm font-medium"
                     >
@@ -921,108 +1129,179 @@ export default function Settings() {
                 <p>No accounts found. Add your first budget account to get started.</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {Object.values(groupedAccounts).map((account: any) => (
-                  <div key={account.account_code} className="border border-gray-200 rounded-lg">
-                    <div className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-3 flex-1">
-                        <button
-                          onClick={() => toggleAccountExpansion(account.account_code)}
-                          className="text-gray-500 hover:text-gray-700"
-                        >
-                          {expandedAccounts.has(account.account_code) ? (
-                            <ChevronDown className="w-4 h-4" />
-                          ) : (
-                            <ChevronRight className="w-4 h-4" />
-                          )}
-                        </button>
-                        
-                        <div className="flex items-center gap-3 flex-1">
-                          {editingAccount?.account_code === account.account_code ? (
-                            <input
-                              type="text"
-                              value={editingAccount?.account_name || ''}
-                              onChange={(e) => setEditingAccount(prev => prev ? { ...prev, account_name: e.target.value } : null)}
-                              onBlur={() => handleUpdateAccountName(account)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  handleUpdateAccountName(account);
-                                } else if (e.key === 'Escape') {
-                                  setEditingAccount(null);
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={orderedAccounts.map(a => a.account_code)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-2">
+                    {orderedAccounts.map((account) => {
+                      const fullAccount = groupedAccounts[account.account_code];
+                      return (
+                        <div key={account.account_code}>
+                          <SortableAccountItem 
+                            account={fullAccount}
+                          >
+                          <button
+                            onClick={() => toggleAccountExpansion(account.account_code)}
+                            className="text-gray-500 hover:text-gray-700"
+                          >
+                            {expandedAccounts.has(account.account_code) ? (
+                              <ChevronDown className="w-4 h-4" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4" />
+                            )}
+                          </button>
+                          
+                          <div className="flex items-center gap-3 flex-1">
+                            {(() => {
+                              const iconValue = fullAccount.icon || suggestIconForAccount(fullAccount.account_name);
+                              const IconComponent = getIconByValue(iconValue) || getIconByValue(DEFAULT_ACCOUNT_ICON);
+                              return IconComponent && (
+                                <div className="p-2 bg-gray-100 rounded-lg">
+                                  <IconComponent className="h-5 w-5 text-gray-700" />
+                                </div>
+                              );
+                            })()}
+                            
+                            {editingAccount?.account_code === fullAccount.account_code ? (
+                              <input
+                                type="text"
+                                value={editingAccount?.account_name || ''}
+                                onChange={(e) => setEditingAccount(prev => prev ? { ...prev, account_name: e.target.value } : null)}
+                                onBlur={() => handleUpdateAccountName(fullAccount)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleUpdateAccountName(fullAccount);
+                                  } else if (e.key === 'Escape') {
+                                    setEditingAccount(null);
+                                  }
+                                }}
+                                className="px-2 py-1 border border-blue-500 rounded focus:outline-none font-medium"
+                                autoFocus
+                              />
+                            ) : (
+                              <span className="font-medium">{fullAccount.account_name}</span>
+                            )}
+                            
+                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                              {fullAccount.account_code}
+                            </span>
+                            
+                            <span className="text-sm text-gray-500">
+                              {fullAccount.subaccounts?.length || 0} subaccounts
+                            </span>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setEditingAccount(fullAccount)}
+                              className="text-gray-500 hover:text-blue-600"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm(`Delete account "${fullAccount.account_name}" and all its subaccounts?`)) {
+                                  deleteAccountMutation.mutate(fullAccount.account_code);
                                 }
                               }}
-                              className="px-2 py-1 border border-blue-500 rounded focus:outline-none font-medium"
-                              autoFocus
-                            />
-                          ) : (
-                            <span className="font-medium">{account.account_name}</span>
-                          )}
+                              className="text-gray-500 hover:text-red-600"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          </SortableAccountItem>
                           
-                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                            {account.account_code}
-                          </span>
-                          
-                          <span className="text-sm text-gray-500">
-                            {account.subaccounts?.length || 0} subaccounts
-                          </span>
+                          {/* Expanded Account Details */}
+                          {expandedAccounts.has(fullAccount.account_code) && (
+                          <div className="px-4 pb-4 border-t border-gray-100">
+                        {/* Account Icon */}
+                        <div className="mt-4">
+                          <label className="text-sm font-medium text-gray-700">Icon</label>
+                          <div className="mt-1">
+                            {editingIcon[fullAccount.account_code] ? (
+                              <div className="space-y-3 max-w-xs">
+                                <IconPicker
+                                  compact={true}
+                                  value={fullAccount.icon || suggestIconForAccount(fullAccount.account_name)}
+                                  onChange={async (iconValue) => {
+                                    await updateAccountMutation.mutateAsync({
+                                      code: fullAccount.account_code,
+                                      icon: iconValue
+                                    });
+                                    setEditingIcon(prev => ({ ...prev, [fullAccount.account_code]: false }));
+                                    toast.success('Icon updated successfully');
+                                  }}
+                                />
+                                <button
+                                  onClick={() => setEditingIcon(prev => ({ ...prev, [fullAccount.account_code]: false }))}
+                                  className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                  {(() => {
+                                    const iconValue = fullAccount.icon || suggestIconForAccount(fullAccount.account_name);
+                                    const IconComponent = getIconByValue(iconValue) || getIconByValue(DEFAULT_ACCOUNT_ICON);
+                                    return IconComponent && (
+                                      <div className="p-2 bg-gray-100 rounded-lg">
+                                        <IconComponent className="h-5 w-5 text-gray-700" />
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                                <button
+                                  onClick={() => setEditingIcon(prev => ({ ...prev, [fullAccount.account_code]: true }))}
+                                  className="text-sm text-blue-600 hover:text-blue-800"
+                                >
+                                  Change Icon
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setEditingAccount(account)}
-                          className="text-gray-500 hover:text-blue-600"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete account "${account.account_name}" and all its subaccounts?`)) {
-                              deleteAccountMutation.mutate(account.account_code);
-                            }
-                          }}
-                          className="text-gray-500 hover:text-red-600"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Expanded Account Details */}
-                    {expandedAccounts.has(account.account_code) && (
-                      <div className="px-4 pb-4 border-t border-gray-100">
+                        
                         {/* Account Description */}
                         <div className="mt-4">
                           <label className="text-sm font-medium text-gray-700">Description</label>
                           <div className="mt-1">
-                            {editingDescription[account.account_code] !== undefined ? (
+                            {editingDescription[fullAccount.account_code] !== undefined ? (
                               <div className="flex gap-2">
                                 <textarea
-                                  value={editingDescription[account.account_code]}
+                                  value={editingDescription[fullAccount.account_code]}
                                   onChange={(e) => setEditingDescription(prev => ({ 
                                     ...prev, 
-                                    [account.account_code]: e.target.value 
+                                    [fullAccount.account_code]: e.target.value 
                                   }))}
                                   className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                   rows={2}
                                 />
                                 <button
                                   onClick={() => {
-                                    handleUpdateDescription(account.account_code, editingDescription[account.account_code]);
+                                    handleUpdateDescription(fullAccount.account_code, editingDescription[fullAccount.account_code]);
                                     setEditingDescription(prev => {
                                       const newState = { ...prev };
-                                      delete newState[account.account_code];
+                                      delete newState[fullAccount.account_code];
                                       return newState;
                                     });
                                   }}
-                                  className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm"
+                                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm"
                                 >
                                   Save
                                 </button>
                                 <button
                                   onClick={() => setEditingDescription(prev => {
                                     const newState = { ...prev };
-                                    delete newState[account.account_code];
+                                    delete newState[fullAccount.account_code];
                                     return newState;
                                   })}
                                   className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md text-sm"
@@ -1035,10 +1314,10 @@ export default function Settings() {
                                 className="text-sm text-gray-600 cursor-pointer hover:bg-gray-50 p-2 rounded"
                                 onClick={() => setEditingDescription(prev => ({ 
                                   ...prev, 
-                                  [account.account_code]: account.description || '' 
+                                  [fullAccount.account_code]: fullAccount.description || '' 
                                 }))}
                               >
-                                {account.description || 'Click to add description'}
+                                {fullAccount.description || 'Click to add description'}
                               </p>
                             )}
                           </div>
@@ -1048,13 +1327,13 @@ export default function Settings() {
                         <div className="mt-4">
                           <div className="flex justify-between items-center mb-2">
                             <h4 className="text-sm font-medium text-gray-700">Subaccounts</h4>
-                            {!isAddingSubaccount[account.account_code] && (
+                            {!isAddingSubaccount[fullAccount.account_code] && (
                               <button
                                 onClick={() => {
-                                  setIsAddingSubaccount(prev => ({ ...prev, [account.account_code]: true }));
+                                  setIsAddingSubaccount(prev => ({ ...prev, [fullAccount.account_code]: true }));
                                   setNewSubaccount(prev => ({ 
                                     ...prev, 
-                                    [account.account_code]: { name: '', description: '' } 
+                                    [fullAccount.account_code]: { name: '', description: '' } 
                                   }));
                                 }}
                                 className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
@@ -1066,7 +1345,7 @@ export default function Settings() {
                           </div>
                           
                           <div className="space-y-2">
-                            {account.subaccounts?.map((sub: ChartAccount) => (
+                            {fullAccount.subaccounts?.map((sub: ChartAccount) => (
                               <div key={sub.account_code} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded">
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2">
@@ -1091,16 +1370,16 @@ export default function Settings() {
                             ))}
                             
                             {/* Add Subaccount Form */}
-                            {isAddingSubaccount[account.account_code] && (
+                            {isAddingSubaccount[fullAccount.account_code] && (
                               <div className="p-3 bg-blue-50 rounded-lg">
                                 <div className="space-y-2">
                                   <input
                                     type="text"
-                                    value={newSubaccount[account.account_code]?.name || ''}
+                                    value={newSubaccount[fullAccount.account_code]?.name || ''}
                                     onChange={(e) => setNewSubaccount(prev => ({ 
                                       ...prev, 
-                                      [account.account_code]: { 
-                                        ...prev[account.account_code], 
+                                      [fullAccount.account_code]: { 
+                                        ...prev[fullAccount.account_code], 
                                         name: e.target.value 
                                       } 
                                     }))}
@@ -1110,11 +1389,11 @@ export default function Settings() {
                                   />
                                   <input
                                     type="text"
-                                    value={newSubaccount[account.account_code]?.description || ''}
+                                    value={newSubaccount[fullAccount.account_code]?.description || ''}
                                     onChange={(e) => setNewSubaccount(prev => ({ 
                                       ...prev, 
-                                      [account.account_code]: { 
-                                        ...prev[account.account_code], 
+                                      [fullAccount.account_code]: { 
+                                        ...prev[fullAccount.account_code], 
                                         description: e.target.value 
                                       } 
                                     }))}
@@ -1123,17 +1402,17 @@ export default function Settings() {
                                   />
                                   <div className="flex gap-2">
                                     <button
-                                      onClick={() => handleSaveSubaccount(account.account_code)}
+                                      onClick={() => handleSaveSubaccount(fullAccount.account_code)}
                                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm"
                                     >
                                       Add
                                     </button>
                                     <button
                                       onClick={() => {
-                                        setIsAddingSubaccount(prev => ({ ...prev, [account.account_code]: false }));
+                                        setIsAddingSubaccount(prev => ({ ...prev, [fullAccount.account_code]: false }));
                                         setNewSubaccount(prev => {
                                           const newState = { ...prev };
-                                          delete newState[account.account_code];
+                                          delete newState[fullAccount.account_code];
                                           return newState;
                                         });
                                       }}
@@ -1148,10 +1427,30 @@ export default function Settings() {
                           </div>
                         </div>
                       </div>
-                    )}
+                        )}
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
+                </SortableContext>
+                
+                {/* Drag Overlay */}
+                <DragOverlay>
+                  {draggedAccount ? (
+                    <div className="bg-white rounded-lg border-2 border-blue-400 shadow-xl p-4 opacity-90">
+                      <div className="flex items-center gap-3">
+                        <GripVertical className="w-5 h-5 text-gray-400" />
+                        <div className="flex-1">
+                          <span className="font-medium">{draggedAccount.account_name}</span>
+                          <span className="ml-2 text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
+                            {draggedAccount.account_code}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
             )}
           </div>
         </div>
@@ -1419,5 +1718,6 @@ export default function Settings() {
         </div>
       )}
     </div>
+    </>
   );
 }

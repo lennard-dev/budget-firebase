@@ -1916,13 +1916,13 @@ apiRouter.get("/budgets", async (req, res) => {
         .limit(1000)  // Prevent memory overflow
         .get(),
       
-      // 3. Chart of accounts - categories
+      // 3. Chart of accounts - parent accounts
       db.collection("users").doc(uid)
         .collection("chart_of_accounts")
         .where("display_as", "==", "category")
         .get(),
       
-      // 4. Chart of accounts - ALL subcategories in ONE query (fixes N+1 problem)
+      // 4. Chart of accounts - ALL sub-accounts in ONE query (fixes N+1 problem)
       db.collection("users").doc(uid)
         .collection("chart_of_accounts")
         .where("display_as", "==", "subcategory")
@@ -1934,8 +1934,8 @@ apiRouter.get("/budgets", async (req, res) => {
         .get()
     ]);
     
-    // Calculate spending by category (optimized with early aggregation)
-    const spendingByCategory = {};
+    // RADICAL: Calculate spending by ACCOUNT CODE
+    const spendingByAccount = {};
     let totalSpent = 0;
     
     transactionsSnap.forEach(doc => {
@@ -1943,148 +1943,94 @@ apiRouter.get("/budgets", async (req, res) => {
       // Skip voided transactions
       if (txn.voided) return;
       
-      const category = txn.category || "Other";
-      const subcategory = txn.subcategory || "General";
+      // Use account_code if available, otherwise skip (no fallback to categories)
+      const accountCode = txn.account_code;
+      if (!accountCode) return;  // Skip transactions without account codes
+      
       const amount = Math.abs(txn.amount || 0);
       
-      if (!spendingByCategory[category]) {
-        spendingByCategory[category] = {
-          total: 0,
-          subcategories: {},
-        };
+      if (!spendingByAccount[accountCode]) {
+        spendingByAccount[accountCode] = 0;
       }
       
-      spendingByCategory[category].total += amount;
+      spendingByAccount[accountCode] += amount;
       totalSpent += amount;
-      
-      if (!spendingByCategory[category].subcategories[subcategory]) {
-        spendingByCategory[category].subcategories[subcategory] = 0;
-      }
-      spendingByCategory[category].subcategories[subcategory] += amount;
     });
     
-    // Get budget data
-    const budgetData = budgetDoc.exists ? budgetDoc.data() : {};
+    // RADICAL: Get budget allocations by account code
+    // Extract the accounts object from the budget document
+    const budgetDocData = budgetDoc.exists ? budgetDoc.data() : {};
+    const budgetData = budgetDocData.accounts || {}; // The allocations are stored in the 'accounts' field
     let totalBudget = 0;
-    let useStoredTotal = false;
     
-    if (budgetData.totalBudget && budgetData.totalBudget > 0) {
-      useStoredTotal = true;
-      totalBudget = budgetData.totalBudget;
-    }
+    // Build accounts hierarchy for display
+    const accountsGrouped = {};
     
-    // OPTIMIZATION: Process categories and subcategories efficiently
-    let categoriesData = [];
-    const categoriesGrouped = {};
+    // Process account hierarchy - group sub-accounts by parent
+    const subcategoriesByParent = {};  // Still using this variable name for compatibility
+    chartSubcategoriesSnap.forEach(doc => {
+      const sub = doc.data();
+      if (!sub.parent_code) return;
+      
+      if (!subcategoriesByParent[sub.parent_code]) {
+        subcategoriesByParent[sub.parent_code] = [];
+      }
+      subcategoriesByParent[sub.parent_code].push({
+        account_code: sub.account_code,
+        account_name: sub.account_name,
+        budgeted: budgetData[sub.account_code] || 0,
+        spent: spendingByAccount[sub.account_code] || 0
+      });
+    });
     
-    if (!chartCategoriesSnap.empty) {
-      // Build subcategories lookup map ONCE (fixes N+1 problem)
-      const subcategoriesByCategory = {};
-      chartSubcategoriesSnap.forEach(doc => {
-        const sub = doc.data();
-        const categoryName = sub.category_name;
-        if (!subcategoriesByCategory[categoryName]) {
-          subcategoriesByCategory[categoryName] = [];
-        }
-        subcategoriesByCategory[categoryName].push({
-          name: sub.subcategory_name || sub.account_name,
-          code: sub.account_code
-        });
+    // Process parent accounts (categories)
+    chartCategoriesSnap.forEach(doc => {
+      const account = doc.data();
+      const accountCode = account.account_code;
+      const accountName = account.account_name;
+      
+      // Get budget allocation for this account
+      const budgeted = budgetData[accountCode] || 0;
+      const spent = spendingByAccount[accountCode] || 0;
+      
+      // Get sub-accounts
+      const subAccounts = subcategoriesByParent[accountCode] || [];
+      
+      // Calculate totals for accounts with sub-accounts
+      // IMPORTANT: Parent account budget should be the SUM of sub-accounts, not added to them
+      let totalAccountBudget = 0;  // Start from 0, we'll sum sub-account budgets
+      let totalAccountSpent = spent;  // Parent might have direct expenses
+      
+      const subAccountsData = subAccounts.map(sub => {
+        totalAccountBudget += sub.budgeted;  // Sum sub-account budgets
+        totalAccountSpent += sub.spent;
+        
+        return {
+          account_code: sub.account_code,
+          account_name: sub.account_name,
+          budgeted: sub.budgeted,
+          spent: sub.spent,
+          remaining: sub.budgeted - sub.spent
+        };
       });
       
-      // Process categories with pre-grouped subcategories
-      const categoryMap = new Map();
-      chartCategoriesSnap.forEach(doc => {
-        const account = doc.data();
-        const categoryName = account.category_name || account.account_name;
-        
-        if (!categoryMap.has(categoryName)) {
-          const categoryData = {
-            name: categoryName,
-            code: account.account_code,
-            subcategories: subcategoriesByCategory[categoryName] || []
-          };
-          categoryMap.set(categoryName, categoryData);
-          categoriesData.push(categoryData);
-        }
-      });
-    } else if (!fallbackCategoriesSnap.empty) {
-      // Use fallback categories if no chart_of_accounts
-      fallbackCategoriesSnap.forEach(doc => {
-        const category = doc.data();
-        categoriesData.push({
-          name: category.name,
-          code: category.code || '',
-          subcategories: (category.subcategories || []).map(sub => ({
-            name: typeof sub === 'object' ? sub.name : sub,
-            code: ''
-          }))
-        });
-      });
-    }
-    
-    // If no categories exist at all, return empty result
-    if (categoriesData.length === 0) {
-      console.log(`Budget fetch completed in ${Date.now() - startTime}ms (no categories)`);
-      return res.json({
-        success: true,
-        data: {
-          totalBudget: 0,
-          totalSpent: 0,
-          totalRemaining: 0,
-          categoriesGrouped: {},
-          month: budgetId,
-          message: "No categories found.",
-          loadTime: Date.now() - startTime
-        }
-      });
-    }
-    
-    // Process all categories in a single pass (optimized)
-    categoriesData.forEach(category => {
-      const categoryName = category.name;
-      const budgetForCategory = (budgetData.categories && budgetData.categories[categoryName]) || {};
-      const spendingForCategory = spendingByCategory[categoryName] || { total: 0, subcategories: {} };
-      
-      let categoryBudgetTotal = 0;
-      const subcategoriesData = [];
-      
-      // Process subcategories efficiently
-      (category.subcategories || []).forEach(sub => {
-        const subName = sub.name || sub;
-        if (!subName || typeof subName === 'object') return;
-        
-        const subBudget = budgetForCategory[subName] || 0;
-        const subSpent = spendingForCategory.subcategories[subName] || 0;
-        
-        categoryBudgetTotal += subBudget;
-        
-        subcategoriesData.push({
-          subcategory: subName,
-          subcategory_id: sub.code || null,
-          budgeted: subBudget,
-          spent: subSpent,
-          remaining: subBudget - subSpent,
-        });
-      });
-      
-      // Add category-level budget if exists
-      const categoryLevelBudget = budgetForCategory["All"] || 0;
-      if (categoryLevelBudget > 0) {
-        categoryBudgetTotal += categoryLevelBudget;
+      // If no sub-accounts have budgets, use the parent account's own budget
+      // This handles accounts without sub-accounts or where budget is set at parent level
+      if (totalAccountBudget === 0) {
+        totalAccountBudget = budgeted;
       }
       
-      categoriesGrouped[categoryName] = {
-        budgeted: categoryBudgetTotal,
-        spent: spendingForCategory.total,
-        remaining: categoryBudgetTotal - spendingForCategory.total,
-        subcategories: subcategoriesData,
-        total: categoryBudgetTotal
+      accountsGrouped[accountCode] = {
+        account_name: accountName,
+        account_code: accountCode,
+        display_order: account.display_order || 999,  // Add display order
+        budgeted: totalAccountBudget,
+        spent: totalAccountSpent,
+        remaining: totalAccountBudget - totalAccountSpent,
+        subaccounts: subAccountsData
       };
       
-      if (!useStoredTotal) {
-        totalBudget += categoryBudgetTotal;
-      }
+      totalBudget += totalAccountBudget;
     });
     
     const loadTime = Date.now() - startTime;
@@ -2096,7 +2042,7 @@ apiRouter.get("/budgets", async (req, res) => {
         totalBudget,
         totalSpent,
         totalRemaining: totalBudget - totalSpent,
-        categoriesGrouped,
+        accountsGrouped,  // RADICAL: Changed from categoriesGrouped
         month: budgetId,
         loadTime  // Include for monitoring
       },
@@ -3061,7 +3007,62 @@ apiRouter.put("/budget-settings", async (req, res) => {
   }
 });
 
-// GET /budget-allocations - Get budget allocations by month
+// Reorder accounts - NEW ENDPOINT for drag-and-drop ordering
+apiRouter.put("/chart-of-accounts/reorder", async (req, res) => {
+  const uid = req.user?.uid;
+  if (!uid) {
+    return res.status(401).json({success: false, error: "Unauthorized"});
+  }
+  
+  try {
+    const { accountOrders } = req.body;
+    
+    if (!accountOrders || !Array.isArray(accountOrders)) {
+      return res.status(400).json({
+        success: false,
+        error: "accountOrders array is required"
+      });
+    }
+    
+    // Use batch update for efficiency
+    const batch = db.batch();
+    
+    accountOrders.forEach(({ account_code, display_order }) => {
+      if (!account_code || display_order === undefined) {
+        return; // Skip invalid entries
+      }
+      
+      const accountRef = db.collection("users").doc(uid)
+        .collection("chart_of_accounts").doc(account_code);
+      
+      batch.update(accountRef, { 
+        display_order,
+        updated_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+    });
+    
+    // Commit all updates at once
+    await batch.commit();
+    
+    // Log the activity
+    await logActivity(uid, "settings", "reordered", 
+      `Reordered ${accountOrders.length} accounts`, null, "chart_of_accounts");
+    
+    return res.json({
+      success: true,
+      message: `Successfully reordered ${accountOrders.length} accounts`
+    });
+    
+  } catch (error) {
+    console.error("Error reordering accounts:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// GET /budget-allocations - Get budget allocations by month (CHART OF ACCOUNTS ONLY)
 apiRouter.get("/budget-allocations", async (req, res) => {
   try {
     const uid = req.user?.uid;
@@ -3085,9 +3086,19 @@ apiRouter.get("/budget-allocations", async (req, res) => {
         });
       }
       
+      const data = doc.data();
+      // Return the full data structure with accounts embedded
+      // This matches what the frontend expects
       return res.json({
         success: true,
-        data: {[monthKey]: doc.data()}
+        data: {[monthKey]: {
+          ...data.accounts || {},  // Spread the allocations at the root
+          year: data.year,
+          month: data.month,
+          monthKey: data.monthKey,
+          updatedAt: data.updatedAt,
+          updatedBy: data.updatedBy
+        }}
       });
     } else if (year) {
       // Get all months for a year
@@ -3097,7 +3108,15 @@ apiRouter.get("/budget-allocations", async (req, res) => {
       
       const allocations = {};
       snapshot.forEach(doc => {
-        allocations[doc.id] = doc.data();
+        const data = doc.data();
+        allocations[doc.id] = {
+          ...data.accounts || {},  // Spread the allocations at the root
+          year: data.year,
+          month: data.month,
+          monthKey: data.monthKey,
+          updatedAt: data.updatedAt,
+          updatedBy: data.updatedBy
+        };
       });
       
       return res.json({
@@ -3110,7 +3129,15 @@ apiRouter.get("/budget-allocations", async (req, res) => {
       const allocations = {};
       
       snapshot.forEach(doc => {
-        allocations[doc.id] = doc.data();
+        const data = doc.data();
+        allocations[doc.id] = {
+          ...data.accounts || {},  // Spread the allocations at the root
+          year: data.year,
+          month: data.month,
+          monthKey: data.monthKey,
+          updatedAt: data.updatedAt,
+          updatedBy: data.updatedBy
+        };
       });
       
       return res.json({
@@ -3147,8 +3174,9 @@ apiRouter.put("/budget-allocations", async (req, res) => {
     // Parse year and month from monthKey (format: YYYY-MM)
     const [year, month] = monthKey.split('-').map(Number);
     
+    // RADICAL: Store allocations by account code ONLY
     const budgetData = {
-      ...allocations,
+      accounts: allocations,  // Store as accounts object with account codes as keys
       year,
       month,
       monthKey,
@@ -3169,6 +3197,141 @@ apiRouter.put("/budget-allocations", async (req, res) => {
     });
   } catch (error) {
     console.error("Error saving budget allocations:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// GET /budget-allocation-config - Get fiscal year configuration
+apiRouter.get("/budget-allocation-config", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const doc = await db.collection("users").doc(uid)
+      .collection("settings").doc("budget_config").get();
+    
+    if (!doc.exists) {
+      // Return default config
+      return res.json({
+        success: true,
+        data: {
+          fiscal_year_start: "January",
+          planning_period: "annual",
+          auto_renewal: false,
+          current_year: new Date().getFullYear()
+        }
+      });
+    }
+    
+    return res.json({
+      success: true,
+      data: doc.data()
+    });
+  } catch (error) {
+    console.error("Error fetching budget config:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// PUT /budget-allocation-config - Update fiscal year configuration
+apiRouter.put("/budget-allocation-config", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const {fiscal_year_start, planning_period, auto_renewal} = req.body;
+    
+    const config = {
+      fiscal_year_start: fiscal_year_start || "January",
+      planning_period: planning_period || "annual",
+      auto_renewal: auto_renewal || false,
+      current_year: new Date().getFullYear(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: uid
+    };
+
+    await db.collection("users").doc(uid)
+      .collection("settings").doc("budget_config").set(config, {merge: true});
+
+    return res.json({
+      success: true,
+      data: config
+    });
+  } catch (error) {
+    console.error("Error updating budget config:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// POST /budget-allocations/bulk-copy - Copy allocations between months
+apiRouter.post("/budget-allocations/bulk-copy", async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({success: false, error: "Unauthorized"});
+    }
+
+    const {source_month, target_months} = req.body;
+    
+    if (!source_month || !target_months || !Array.isArray(target_months)) {
+      return res.status(400).json({
+        success: false,
+        error: "source_month and target_months array are required"
+      });
+    }
+
+    // Get source allocations
+    const sourceDoc = await db.collection("users").doc(uid)
+      .collection("budget_allocations").doc(source_month).get();
+    
+    if (!sourceDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: "Source month allocations not found"
+      });
+    }
+
+    const sourceData = sourceDoc.data();
+    const batch = db.batch();
+
+    // Copy to each target month
+    for (const targetMonth of target_months) {
+      const [year, month] = targetMonth.split('-').map(Number);
+      const targetRef = db.collection("users").doc(uid)
+        .collection("budget_allocations").doc(targetMonth);
+      
+      batch.set(targetRef, {
+        ...sourceData,
+        year,
+        month,
+        monthKey: targetMonth,
+        copiedFrom: source_month,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy: uid
+      });
+    }
+
+    await batch.commit();
+
+    return res.json({
+      success: true,
+      message: `Allocations copied from ${source_month} to ${target_months.length} months`
+    });
+  } catch (error) {
+    console.error("Error copying budget allocations:", error);
     return res.status(500).json({
       success: false,
       error: error.message
@@ -3567,63 +3730,13 @@ apiRouter.put("/integrations", async (req, res) => {
 
 // ==================== CHART OF ACCOUNTS ENDPOINTS ====================
 
-// GET /chart-of-accounts - Get full chart of accounts tree
-apiRouter.get("/chart-of-accounts", async (req, res) => {
-  try {
-    const uid = req.user?.uid;
-    if (!uid) {
-      return res.status(401).json({success: false, error: "Unauthorized"});
-    }
-    
-    const categories = await accountsService.getCategoresFromAccounts(uid);
-    return res.json({success: true, data: categories});
-  } catch (error) {
-    console.error("Error fetching chart of accounts:", error);
-    return res.status(500).json({success: false, error: error.message});
-  }
-});
+// REMOVED: Duplicate /chart-of-accounts endpoint that was returning legacy category format
+// The proper /chart-of-accounts endpoint is defined later in the file at line 4010
 
-// GET /chart-of-accounts/lookup - Lookup account by category/subcategory
-apiRouter.get("/chart-of-accounts/lookup", async (req, res) => {
-  try {
-    const uid = req.user?.uid;
-    if (!uid) {
-      return res.status(401).json({success: false, error: "Unauthorized"});
-    }
-    
-    const { category, subcategory } = req.query;
-    if (!category) {
-      return res.status(400).json({success: false, error: "Category is required"});
-    }
-    
-    const accountCode = await accountsService.getAccountFromCategory(uid, category, subcategory);
-    if (!accountCode) {
-      return res.status(404).json({success: false, error: "Account not found"});
-    }
-    
-    const account = await accountsService.getAccount(uid, accountCode);
-    return res.json({success: true, data: account});
-  } catch (error) {
-    console.error("Error looking up account:", error);
-    return res.status(500).json({success: false, error: error.message});
-  }
-});
+// REMOVED: Duplicate /chart-of-accounts/setup endpoint
+// The proper endpoint is defined later in the file
 
-// POST /chart-of-accounts/setup - Initialize default chart
-apiRouter.post("/chart-of-accounts/setup", async (req, res) => {
-  try {
-    const uid = req.user?.uid;
-    if (!uid) {
-      return res.status(401).json({success: false, error: "Unauthorized"});
-    }
-    
-    await accountsService.initializeDefaultChart(uid);
-    return res.json({success: true, message: "Chart of accounts initialized"});
-  } catch (error) {
-    console.error("Error setting up chart:", error);
-    return res.status(500).json({success: false, error: error.message});
-  }
-});
+// REMOVED BLOCK: Lines 3650-3815 contained duplicate setup code
 
 // POST /export-data - Export all data
 apiRouter.post("/export-data", async (req, res) => {
@@ -3759,15 +3872,25 @@ apiRouter.get("/chart-of-accounts", async (req, res) => {
   const uid = req.user.uid;
   
   try {
+    // Get all accounts (no orderBy to avoid composite index requirement)
     const chartSnap = await db.collection("users").doc(uid)
       .collection("chart_of_accounts")
-      .orderBy("account_code")
       .get();
     
-    const accounts = chartSnap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    // Map and sort by display_order if exists, otherwise by account_code
+    const accounts = chartSnap.docs
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+      .sort((a, b) => {
+        // Sort by display_order if both have it
+        if (a.display_order !== undefined && b.display_order !== undefined) {
+          return a.display_order - b.display_order;
+        }
+        // Fallback to account_code
+        return a.account_code.localeCompare(b.account_code);
+      });
     
     // Build hierarchy
     const hierarchy = {
@@ -3796,6 +3919,665 @@ apiRouter.get("/chart-of-accounts", async (req, res) => {
   } catch (error) {
     console.error("Error fetching chart of accounts:", error);
     res.status(500).json({success: false, error: error.message});
+  }
+});
+
+// CREATE account
+apiRouter.post("/chart-of-accounts", async (req, res) => {
+  const uid = req.user?.uid;
+  if (!uid) {
+    return res.status(401).json({success: false, error: "Unauthorized"});
+  }
+  
+  try {
+    const { 
+      account_name, 
+      account_code,
+      parent_code,
+      display_as,
+      description,
+      icon
+    } = req.body;
+    
+    if (!account_name) {
+      return res.status(400).json({success: false, error: "Account name is required"});
+    }
+    
+    // Generate account code if not provided
+    let code = account_code;
+    if (!code) {
+      code = await accountsService.generateNextAccountCode(uid, parent_code);
+      if (!code) {
+        return res.status(500).json({success: false, error: "Failed to generate account code"});
+      }
+    }
+    
+    // Validate account code uniqueness
+    const isUnique = await accountsService.validateAccountCode(uid, code);
+    if (!isUnique) {
+      return res.status(400).json({success: false, error: "Account code already exists"});
+    }
+    
+    // If creating a subaccount, verify parent exists
+    if (parent_code) {
+      const parentAccount = await accountsService.getAccount(uid, parent_code);
+      if (!parentAccount) {
+        return res.status(400).json({success: false, error: "Parent account does not exist"});
+      }
+    }
+    
+    // Get the next display_order value
+    const accountsSnap = await db.collection("users").doc(uid)
+      .collection("chart_of_accounts")
+      .get();
+    const nextDisplayOrder = accountsSnap.size + 1;
+    
+    // Create the account
+    const accountData = {
+      account_code: code,
+      account_name,
+      account_type: "expense",
+      display_as: parent_code ? "subcategory" : "category",
+      parent_code: parent_code || null,
+      level: parent_code ? 2 : 1,
+      description: description || null,
+      icon: icon || null,
+      is_active: true,
+      display_order: nextDisplayOrder,  // Add display order
+      created_by: uid
+    };
+    
+    await accountsService.createAccount(uid, accountData);
+    
+    // Log activity
+    await logActivity(uid, "account", "created", 
+      `Created account ${account_name} (${code})`, code, "chart_of_accounts");
+    
+    res.json({
+      success: true,
+      account_code: code,
+      message: "Account created successfully"
+    });
+  } catch (error) {
+    console.error("Error creating account:", error);
+    res.status(500).json({success: false, error: error.message});
+  }
+});
+
+// UPDATE account
+apiRouter.put("/chart-of-accounts/:code", async (req, res) => {
+  const uid = req.user?.uid;
+  if (!uid) {
+    return res.status(401).json({success: false, error: "Unauthorized"});
+  }
+  
+  const { code } = req.params;
+  
+  try {
+    // Check if account exists
+    const account = await accountsService.getAccount(uid, code);
+    if (!account) {
+      return res.status(404).json({success: false, error: "Account not found"});
+    }
+    
+    const updates = req.body;
+    
+    // Update the account
+    await accountsService.updateAccount(uid, code, updates);
+    
+    // If account name changed, update all transactions
+    if (updates.account_name && updates.account_name !== account.account_name) {
+      const batch = db.batch();
+      let updateCount = 0;
+      
+      const txnSnap = await db.collection("users").doc(uid)
+        .collection("all-transactions")
+        .where("account_code", "==", code)
+        .get();
+      
+      txnSnap.forEach(doc => {
+        batch.update(doc.ref, {
+          account_name: updates.account_name
+        });
+        updateCount++;
+      });
+      
+      if (updateCount > 0) {
+        await batch.commit();
+        console.log(`Updated ${updateCount} transactions with new account name`);
+      }
+    }
+    
+    // Log activity
+    await logActivity(uid, "account", "updated", 
+      `Updated account ${code}`, code, "chart_of_accounts");
+    
+    res.json({
+      success: true,
+      message: "Account updated successfully"
+    });
+  } catch (error) {
+    console.error("Error updating account:", error);
+    res.status(500).json({success: false, error: error.message});
+  }
+});
+
+// Get transaction count for an account
+apiRouter.get("/chart-of-accounts/:code/transaction-count", async (req, res) => {
+  const uid = req.user?.uid;
+  if (!uid) {
+    return res.status(401).json({success: false, error: "Unauthorized"});
+  }
+  
+  const { code } = req.params;
+  
+  try {
+    // Check if account exists
+    const account = await accountsService.getAccount(uid, code);
+    if (!account) {
+      return res.status(404).json({success: false, error: "Account not found"});
+    }
+    
+    // Count transactions using this account
+    let count = 0;
+    
+    // Check by account_code (new system)
+    const codeQuery = await db.collection("users").doc(uid)
+      .collection("all-transactions")
+      .where("account_code", "==", code)
+      .where("voided", "!=", true)
+      .get();
+    count += codeQuery.size;
+    
+    // Check by category/subcategory names (legacy system)
+    if (account.category_name) {
+      const categoryQuery = await db.collection("users").doc(uid)
+        .collection("all-transactions")
+        .where("category", "==", account.category_name)
+        .where("voided", "!=", true)
+        .get();
+      count += categoryQuery.size;
+    }
+    
+    if (account.subcategory_name) {
+      const subcategoryQuery = await db.collection("users").doc(uid)
+        .collection("all-transactions")
+        .where("subcategory", "==", account.subcategory_name)
+        .where("voided", "!=", true)
+        .get();
+      count += subcategoryQuery.size;
+    }
+    
+    res.json({
+      success: true,
+      count: count,
+      account_code: code,
+      account_name: account.account_name
+    });
+  } catch (error) {
+    console.error("Error counting transactions:", error);
+    res.status(500).json({success: false, error: error.message});
+  }
+});
+
+// DELETE account with optional transfer
+// POST endpoint for delete with body (workaround for DELETE with body issues)
+apiRouter.post("/chart-of-accounts/:code/delete", async (req, res) => {
+  const uid = req.user?.uid;
+  if (!uid) {
+    return res.status(401).json({success: false, error: "Unauthorized"});
+  }
+  
+  const { code } = req.params;
+  const { action = 'delete', targetAccountCode } = req.body || {};
+  
+  try {
+    // Check if account exists
+    const account = await accountsService.getAccount(uid, code);
+    if (!account) {
+      return res.status(404).json({success: false, error: "Account not found"});
+    }
+    
+    // Check if account has subaccounts (cannot delete parent with subaccounts)
+    const subSnap = await db.collection("users").doc(uid)
+      .collection("chart_of_accounts")
+      .where("parent_code", "==", code)
+      .limit(1)
+      .get();
+    
+    if (!subSnap.empty) {
+      return res.status(400).json({
+        success: false, 
+        error: "Cannot delete account with subaccounts. Please delete all subaccounts first."
+      });
+    }
+    
+    // If action is transfer, validate target account and transfer transactions
+    if (action === 'transfer' && targetAccountCode) {
+      // Validate target account exists
+      const targetAccount = await accountsService.getAccount(uid, targetAccountCode);
+      if (!targetAccount) {
+        return res.status(400).json({success: false, error: "Target account not found"});
+      }
+      
+      // Transfer all transactions to the target account
+      const batch = db.batch();
+      let transferCount = 0;
+      
+      // Transfer by account_code
+      const codeQuery = await db.collection("users").doc(uid)
+        .collection("all-transactions")
+        .where("account_code", "==", code)
+        .get();
+      
+      codeQuery.forEach(doc => {
+        batch.update(doc.ref, {
+          account_code: targetAccountCode,
+          account_name: targetAccount.account_name,
+          category: targetAccount.category_name || targetAccount.account_name,
+          subcategory: targetAccount.subcategory_name || ''
+        });
+        transferCount++;
+      });
+      
+      // Transfer by category name (legacy)
+      if (account.category_name) {
+        const categoryQuery = await db.collection("users").doc(uid)
+          .collection("all-transactions")
+          .where("category", "==", account.category_name)
+          .get();
+        
+        categoryQuery.forEach(doc => {
+          // Only update if not already updated by account_code
+          if (doc.data().account_code !== code) {
+            batch.update(doc.ref, {
+              account_code: targetAccountCode,
+              account_name: targetAccount.account_name,
+              category: targetAccount.category_name || targetAccount.account_name,
+              subcategory: targetAccount.subcategory_name || ''
+            });
+            transferCount++;
+          }
+        });
+      }
+      
+      // Transfer by subcategory name (legacy)
+      if (account.subcategory_name) {
+        const subcategoryQuery = await db.collection("users").doc(uid)
+          .collection("all-transactions")
+          .where("subcategory", "==", account.subcategory_name)
+          .get();
+        
+        subcategoryQuery.forEach(doc => {
+          // Only update if not already updated
+          if (doc.data().account_code !== code) {
+            batch.update(doc.ref, {
+              account_code: targetAccountCode,
+              account_name: targetAccount.account_name,
+              category: targetAccount.category_name || targetAccount.account_name,
+              subcategory: targetAccount.subcategory_name || ''
+            });
+            transferCount++;
+          }
+        });
+      }
+      
+      // Commit the transfer
+      if (transferCount > 0) {
+        await batch.commit();
+        console.log(`Transferred ${transferCount} transactions from ${code} to ${targetAccountCode}`);
+      }
+      
+      // Log the transfer activity
+      await logActivity(uid, "account", "transferred", 
+        `Transferred ${transferCount} transactions from ${account.account_name} to ${targetAccount.account_name}`, 
+        code, "chart_of_accounts");
+    }
+    
+    // Now handle the deletion based on the action
+    if (action === 'transfer' && targetAccountCode) {
+      // We already transferred transactions, just delete the account
+      await db.collection("users").doc(uid)
+        .collection("chart_of_accounts")
+        .doc(code)
+        .delete();
+    } else if (action === 'delete') {
+      // Delete all transactions for this account
+      const batch = db.batch();
+      let deleteCount = 0;
+      
+      // Delete by account_code
+      const codeQuery = await db.collection("users").doc(uid)
+        .collection("all-transactions")
+        .where("account_code", "==", code)
+        .get();
+      
+      codeQuery.forEach(doc => {
+        batch.delete(doc.ref);
+        deleteCount++;
+      });
+      
+      // Delete by category name (legacy)
+      if (account.category_name) {
+        const categoryQuery = await db.collection("users").doc(uid)
+          .collection("all-transactions")
+          .where("category", "==", account.category_name)
+          .get();
+        
+        categoryQuery.forEach(doc => {
+          // Only delete if not already marked for deletion
+          if (doc.data().account_code !== code) {
+            batch.delete(doc.ref);
+            deleteCount++;
+          }
+        });
+      }
+      
+      // Delete by subcategory name (legacy)
+      if (account.subcategory_name) {
+        const subcategoryQuery = await db.collection("users").doc(uid)
+          .collection("all-transactions")
+          .where("subcategory", "==", account.subcategory_name)
+          .get();
+        
+        subcategoryQuery.forEach(doc => {
+          // Only delete if not already marked for deletion
+          if (doc.data().account_code !== code && doc.data().category !== account.category_name) {
+            batch.delete(doc.ref);
+            deleteCount++;
+          }
+        });
+      }
+      
+      // Commit the transaction deletions
+      if (deleteCount > 0) {
+        await batch.commit();
+        console.log(`Deleted ${deleteCount} transactions for account ${code}`);
+        
+        // Also clean up the ledger entries for these deleted transactions
+        // This is important to maintain consistency
+        const ledgerBatch = db.batch();
+        let ledgerDeleteCount = 0;
+        
+        // Delete ledger entries for all accounts affected by these transactions
+        const ledgerQuery = await db.collection("users").doc(uid)
+          .collection("account_ledger")
+          .where("account", "in", ["cash", "bank"])
+          .get();
+        
+        // We need to rebuild the ledger after deleting transactions
+        // The safest approach is to trigger a ledger rebuild
+        const affectedAccounts = new Set();
+        affectedAccounts.add("cash");
+        affectedAccounts.add("bank");
+        
+        // Rebuild ledger for affected accounts
+        await rebuildLedgerForAccounts(uid, Array.from(affectedAccounts));
+        console.log(`Rebuilt ledger for affected accounts after deleting transactions`);
+      }
+      
+      // Now delete the account itself
+      await db.collection("users").doc(uid)
+        .collection("chart_of_accounts")
+        .doc(code)
+        .delete();
+      
+      // Log the deletion activity
+      await logActivity(uid, "account", "deleted_with_transactions", 
+        `Deleted account ${account.account_name} (${code}) along with ${deleteCount} transactions`, 
+        code, "chart_of_accounts");
+    } else {
+      // This happens when action is 'transfer' but no target account is provided
+      throw new Error("Transfer action requires a target account");
+    }
+    
+    // Log activity
+    await logActivity(uid, "account", "deleted", 
+      `Deleted account ${account.account_name} (${code})${action === 'transfer' ? ' after transferring transactions' : ''}`, 
+      code, "chart_of_accounts");
+    
+    res.json({
+      success: true,
+      message: action === 'transfer' 
+        ? `Account deleted and transactions transferred successfully`
+        : action === 'delete'
+        ? `Account and all associated transactions deleted successfully`
+        : "Account deleted successfully"
+    });
+  } catch (error) {
+    console.error("Error deleting account:", error);
+    if (error.message.includes("Cannot delete")) {
+      res.status(400).json({success: false, error: error.message});
+    } else {
+      res.status(500).json({success: false, error: error.message});
+    }
+  }
+});
+
+// Keep the original DELETE endpoint for backward compatibility
+apiRouter.delete("/chart-of-accounts/:code", async (req, res) => {
+  const uid = req.user?.uid;
+  if (!uid) {
+    return res.status(401).json({success: false, error: "Unauthorized"});
+  }
+  
+  const { code } = req.params;
+  const { action = 'delete', targetAccountCode } = req.body || {};
+  
+  try {
+    // Check if account exists
+    const account = await accountsService.getAccount(uid, code);
+    if (!account) {
+      return res.status(404).json({success: false, error: "Account not found"});
+    }
+    
+    // Check if account has subaccounts (cannot delete parent with subaccounts)
+    const subSnap = await db.collection("users").doc(uid)
+      .collection("chart_of_accounts")
+      .where("parent_code", "==", code)
+      .limit(1)
+      .get();
+    
+    if (!subSnap.empty) {
+      return res.status(400).json({
+        success: false, 
+        error: "Cannot delete account with subaccounts. Please delete all subaccounts first."
+      });
+    }
+    
+    // If action is transfer, validate target account and transfer transactions
+    if (action === 'transfer' && targetAccountCode) {
+      // Validate target account exists
+      const targetAccount = await accountsService.getAccount(uid, targetAccountCode);
+      if (!targetAccount) {
+        return res.status(400).json({success: false, error: "Target account not found"});
+      }
+      
+      // Transfer all transactions to the target account
+      const batch = db.batch();
+      let transferCount = 0;
+      
+      // Transfer by account_code
+      const codeQuery = await db.collection("users").doc(uid)
+        .collection("all-transactions")
+        .where("account_code", "==", code)
+        .get();
+      
+      codeQuery.forEach(doc => {
+        batch.update(doc.ref, {
+          account_code: targetAccountCode,
+          account_name: targetAccount.account_name,
+          category: targetAccount.category_name || targetAccount.account_name,
+          subcategory: targetAccount.subcategory_name || ''
+        });
+        transferCount++;
+      });
+      
+      // Transfer by category name (legacy)
+      if (account.category_name) {
+        const categoryQuery = await db.collection("users").doc(uid)
+          .collection("all-transactions")
+          .where("category", "==", account.category_name)
+          .get();
+        
+        categoryQuery.forEach(doc => {
+          batch.update(doc.ref, {
+            account_code: targetAccountCode,
+            account_name: targetAccount.account_name,
+            category: targetAccount.category_name || targetAccount.account_name,
+            subcategory: targetAccount.subcategory_name || ''
+          });
+          transferCount++;
+        });
+      }
+      
+      // Transfer by subcategory name (legacy)
+      if (account.subcategory_name) {
+        const subcategoryQuery = await db.collection("users").doc(uid)
+          .collection("all-transactions")
+          .where("subcategory", "==", account.subcategory_name)
+          .get();
+        
+        subcategoryQuery.forEach(doc => {
+          batch.update(doc.ref, {
+            account_code: targetAccountCode,
+            account_name: targetAccount.account_name,
+            category: targetAccount.category_name || targetAccount.account_name,
+            subcategory: targetAccount.subcategory_name || ''
+          });
+          transferCount++;
+        });
+      }
+      
+      // Commit the transfer
+      if (transferCount > 0) {
+        await batch.commit();
+        console.log(`Transferred ${transferCount} transactions from ${code} to ${targetAccountCode}`);
+      }
+      
+      // Log the transfer activity
+      await logActivity(uid, "account", "transferred", 
+        `Transferred ${transferCount} transactions from ${account.account_name} to ${targetAccount.account_name}`, 
+        code, "chart_of_accounts");
+    }
+    
+    // Now handle the deletion based on the action
+    if (action === 'transfer' && targetAccountCode) {
+      // We already transferred transactions, just delete the account
+      await db.collection("users").doc(uid)
+        .collection("chart_of_accounts")
+        .doc(code)
+        .delete();
+    } else if (action === 'delete') {
+      // Delete all transactions for this account
+      const batch = db.batch();
+      let deleteCount = 0;
+      
+      // Delete by account_code
+      const codeQuery = await db.collection("users").doc(uid)
+        .collection("all-transactions")
+        .where("account_code", "==", code)
+        .get();
+      
+      codeQuery.forEach(doc => {
+        batch.delete(doc.ref);
+        deleteCount++;
+      });
+      
+      // Delete by category name (legacy)
+      if (account.category_name) {
+        const categoryQuery = await db.collection("users").doc(uid)
+          .collection("all-transactions")
+          .where("category", "==", account.category_name)
+          .get();
+        
+        categoryQuery.forEach(doc => {
+          // Only delete if not already marked for deletion
+          if (doc.data().account_code !== code) {
+            batch.delete(doc.ref);
+            deleteCount++;
+          }
+        });
+      }
+      
+      // Delete by subcategory name (legacy)
+      if (account.subcategory_name) {
+        const subcategoryQuery = await db.collection("users").doc(uid)
+          .collection("all-transactions")
+          .where("subcategory", "==", account.subcategory_name)
+          .get();
+        
+        subcategoryQuery.forEach(doc => {
+          // Only delete if not already marked for deletion
+          if (doc.data().account_code !== code && doc.data().category !== account.category_name) {
+            batch.delete(doc.ref);
+            deleteCount++;
+          }
+        });
+      }
+      
+      // Commit the transaction deletions
+      if (deleteCount > 0) {
+        await batch.commit();
+        console.log(`Deleted ${deleteCount} transactions for account ${code}`);
+        
+        // Also clean up the ledger entries for these deleted transactions
+        // This is important to maintain consistency
+        const ledgerBatch = db.batch();
+        let ledgerDeleteCount = 0;
+        
+        // Delete ledger entries for all accounts affected by these transactions
+        const ledgerQuery = await db.collection("users").doc(uid)
+          .collection("account_ledger")
+          .where("account", "in", ["cash", "bank"])
+          .get();
+        
+        // We need to rebuild the ledger after deleting transactions
+        // The safest approach is to trigger a ledger rebuild
+        const affectedAccounts = new Set();
+        affectedAccounts.add("cash");
+        affectedAccounts.add("bank");
+        
+        // Rebuild ledger for affected accounts
+        await rebuildLedgerForAccounts(uid, Array.from(affectedAccounts));
+        console.log(`Rebuilt ledger for affected accounts after deleting transactions`);
+      }
+      
+      // Now delete the account itself
+      await db.collection("users").doc(uid)
+        .collection("chart_of_accounts")
+        .doc(code)
+        .delete();
+      
+      // Log the deletion activity
+      await logActivity(uid, "account", "deleted_with_transactions", 
+        `Deleted account ${account.account_name} (${code}) along with ${deleteCount} transactions`, 
+        code, "chart_of_accounts");
+    } else {
+      // This happens when action is 'transfer' but no target account is provided
+      throw new Error("Transfer action requires a target account");
+    }
+    
+    // Log activity
+    await logActivity(uid, "account", "deleted", 
+      `Deleted account ${account.account_name} (${code})${action === 'transfer' ? ' after transferring transactions' : ''}`, 
+      code, "chart_of_accounts");
+    
+    res.json({
+      success: true,
+      message: action === 'transfer' 
+        ? `Account deleted and transactions transferred successfully`
+        : action === 'delete'
+        ? `Account and all associated transactions deleted successfully`
+        : "Account deleted successfully"
+    });
+  } catch (error) {
+    console.error("Error deleting account:", error);
+    if (error.message.includes("Cannot delete")) {
+      res.status(400).json({success: false, error: error.message});
+    } else {
+      res.status(500).json({success: false, error: error.message});
+    }
   }
 });
 
@@ -5192,6 +5974,313 @@ apiRouter.get("/admin/aggregate-status", async (req, res) => {
       success: false,
       error: error.message
     });
+  }
+});
+
+// ============================================
+// PLANNING PERIODS ENDPOINTS
+// ============================================
+
+// GET all planning periods
+apiRouter.get("/planning-periods", async (req, res) => {
+  const uid = req.user?.uid;
+  if (!uid) {
+    return res.status(401).json({success: false, error: "Unauthorized"});
+  }
+
+  try {
+    const snapshot = await db.collection("users").doc(uid)
+      .collection("planning_periods")
+      .orderBy("startMonth", "asc")
+      .get();
+
+    const periods = [];
+    snapshot.forEach(doc => {
+      periods.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+
+    res.json({
+      success: true,
+      data: periods
+    });
+  } catch (error) {
+    console.error("Error fetching planning periods:", error);
+    res.status(500).json({success: false, error: error.message});
+  }
+});
+
+// CREATE new planning period
+apiRouter.post("/planning-periods", async (req, res) => {
+  const uid = req.user?.uid;
+  if (!uid) {
+    return res.status(401).json({success: false, error: "Unauthorized"});
+  }
+
+  const { 
+    name, 
+    interval, 
+    startMonth, 
+    endMonth, 
+    status = 'planning',
+    copiedFromPeriod,
+    autoRollForward = true
+  } = req.body;
+
+  try {
+    // Validate required fields
+    if (!name || !interval || !startMonth || !endMonth) {
+      return res.status(400).json({
+        success: false, 
+        error: "Missing required fields"
+      });
+    }
+
+    // Calculate months array
+    const months = [];
+    const start = new Date(startMonth + "-01");
+    const end = new Date(endMonth + "-01");
+    const current = new Date(start);
+    
+    while (current <= end) {
+      const monthKey = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
+      months.push(monthKey);
+      current.setMonth(current.getMonth() + 1);
+    }
+
+    // Check for overlapping periods
+    const existingPeriods = await db.collection("users").doc(uid)
+      .collection("planning_periods")
+      .get();
+
+    for (const doc of existingPeriods.docs) {
+      const existing = doc.data();
+      const overlap = existing.months?.some(month => months.includes(month));
+      if (overlap) {
+        return res.status(400).json({
+          success: false,
+          error: `Overlapping period detected with ${existing.name}. Months can only belong to one planning period.`
+        });
+      }
+    }
+
+    // Create the planning period
+    const periodId = `PP_${startMonth}_${interval.charAt(0).toUpperCase()}`;
+    const periodData = {
+      name,
+      interval,
+      startMonth,
+      endMonth,
+      months,
+      status,
+      fiscalYear: new Date(startMonth + "-01").getFullYear(),
+      autoRollForward,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdBy: uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    // If copying from another period, copy the allocations
+    if (copiedFromPeriod) {
+      const sourcePeriod = await db.collection("users").doc(uid)
+        .collection("planning_periods")
+        .doc(copiedFromPeriod)
+        .get();
+      
+      if (sourcePeriod.exists) {
+        const sourceMonths = sourcePeriod.data().months || [];
+        
+        // Copy allocations for overlapping month patterns
+        for (const month of months) {
+          const monthNum = month.split('-')[1];
+          const sourceMonth = sourceMonths.find(m => m.split('-')[1] === monthNum);
+          
+          if (sourceMonth) {
+            const sourceAllocations = await db.collection("users").doc(uid)
+              .collection("budget_allocations")
+              .doc(sourceMonth)
+              .get();
+            
+            if (sourceAllocations.exists) {
+              const allocData = sourceAllocations.data();
+              // Remove metadata, keep only account allocations
+              const { year, month: m, monthKey, updatedAt, updatedBy, periodId: pid, ...accountAllocations } = allocData;
+              
+              await db.collection("users").doc(uid)
+                .collection("budget_allocations")
+                .doc(month)
+                .set({
+                  ...accountAllocations,
+                  year: parseInt(month.split('-')[0]),
+                  month: parseInt(month.split('-')[1]),
+                  monthKey: month,
+                  periodId,
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                  updatedBy: uid
+                });
+            }
+          }
+        }
+        
+        periodData.copiedFromPeriod = copiedFromPeriod;
+      }
+    }
+
+    await db.collection("users").doc(uid)
+      .collection("planning_periods")
+      .doc(periodId)
+      .set(periodData);
+
+    res.json({
+      success: true,
+      data: {
+        id: periodId,
+        ...periodData
+      }
+    });
+  } catch (error) {
+    console.error("Error creating planning period:", error);
+    res.status(500).json({success: false, error: error.message});
+  }
+});
+
+// UPDATE planning period
+apiRouter.put("/planning-periods/:id", async (req, res) => {
+  const uid = req.user?.uid;
+  if (!uid) {
+    return res.status(401).json({success: false, error: "Unauthorized"});
+  }
+
+  const { id } = req.params;
+  const updates = req.body;
+
+  try {
+    // Don't allow changing months if allocations exist
+    if (updates.startMonth || updates.endMonth) {
+      const allocations = await db.collection("users").doc(uid)
+        .collection("budget_allocations")
+        .where("periodId", "==", id)
+        .limit(1)
+        .get();
+      
+      if (!allocations.empty) {
+        return res.status(400).json({
+          success: false,
+          error: "Cannot change period dates when allocations exist"
+        });
+      }
+    }
+
+    updates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+    await db.collection("users").doc(uid)
+      .collection("planning_periods")
+      .doc(id)
+      .update(updates);
+
+    res.json({
+      success: true,
+      message: "Planning period updated successfully"
+    });
+  } catch (error) {
+    console.error("Error updating planning period:", error);
+    res.status(500).json({success: false, error: error.message});
+  }
+});
+
+// DELETE planning period
+apiRouter.delete("/planning-periods/:id", async (req, res) => {
+  const uid = req.user?.uid;
+  if (!uid) {
+    return res.status(401).json({success: false, error: "Unauthorized"});
+  }
+
+  const { id } = req.params;
+
+  try {
+    // Check if period has allocations
+    const allocations = await db.collection("users").doc(uid)
+      .collection("budget_allocations")
+      .where("periodId", "==", id)
+      .limit(1)
+      .get();
+    
+    if (!allocations.empty) {
+      return res.status(400).json({
+        success: false,
+        error: "Cannot delete planning period with existing allocations"
+      });
+    }
+
+    await db.collection("users").doc(uid)
+      .collection("planning_periods")
+      .doc(id)
+      .delete();
+
+    res.json({
+      success: true,
+      message: "Planning period deleted successfully"
+    });
+  } catch (error) {
+    console.error("Error deleting planning period:", error);
+    res.status(500).json({success: false, error: error.message});
+  }
+});
+
+// VALIDATE planning period (check for overlaps)
+apiRouter.post("/planning-periods/validate", async (req, res) => {
+  const uid = req.user?.uid;
+  if (!uid) {
+    return res.status(401).json({success: false, error: "Unauthorized"});
+  }
+
+  const { startMonth, endMonth, excludeId } = req.body;
+
+  try {
+    // Calculate months array
+    const months = [];
+    const start = new Date(startMonth + "-01");
+    const end = new Date(endMonth + "-01");
+    const current = new Date(start);
+    
+    while (current <= end) {
+      const monthKey = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
+      months.push(monthKey);
+      current.setMonth(current.getMonth() + 1);
+    }
+
+    // Check for overlapping periods
+    let query = db.collection("users").doc(uid)
+      .collection("planning_periods");
+    
+    const existingPeriods = await query.get();
+    const overlaps = [];
+
+    for (const doc of existingPeriods.docs) {
+      if (excludeId && doc.id === excludeId) continue;
+      
+      const existing = doc.data();
+      const overlappingMonths = existing.months?.filter(month => months.includes(month)) || [];
+      
+      if (overlappingMonths.length > 0) {
+        overlaps.push({
+          periodId: doc.id,
+          periodName: existing.name,
+          overlappingMonths
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      valid: overlaps.length === 0,
+      overlaps
+    });
+  } catch (error) {
+    console.error("Error validating planning period:", error);
+    res.status(500).json({success: false, error: error.message});
   }
 });
 
