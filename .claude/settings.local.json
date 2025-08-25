@@ -80,7 +80,8 @@
       "Bash(npx tsc:*)",
       "Bash(npx vite:*)",
       "Bash(npx prettier:*)",
-      "Bash(/dev/null)"
+      "Bash(/dev/null)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"
